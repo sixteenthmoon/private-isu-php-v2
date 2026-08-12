@@ -34,7 +34,12 @@ if (isset($_SERVER['ISUCONP_MEMCACHED_ADDRESS'])) {
 ini_set('session.save_handler', 'memcached');
 ini_set('session.save_path', $memd_addr);
 
-session_start();
+// GET /image/{id}.{ext} は $_SESSION を一切参照しないため、memcachedへの
+// セッション読み出しラウンドトリップをスキップする（最頻出エンドポイントでの無駄なI/O除去）。
+$request_path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+if ($request_path === null || strpos($request_path, '/image/') !== 0) {
+    session_start();
+}
 
 // dependency
 $container = new Container();
