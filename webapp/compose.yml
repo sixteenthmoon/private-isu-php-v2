@@ -2,6 +2,7 @@ name: private-isu
 services:
   nginx:
     image: nginx:1.30
+    restart: unless-stopped
     depends_on:
       - app
     volumes:
@@ -17,6 +18,7 @@ services:
       # Go実装は golang/ PHP実装は php/ Python実装は python/ Node.js実装は node/ に変更
       context: php/
       dockerfile: Dockerfile
+    restart: unless-stopped
     depends_on:
       - mysql
       - memcached
@@ -40,6 +42,7 @@ services:
 
   mysql:
     image: mysql:9.7
+    restart: unless-stopped
     environment:
       #- "TZ=Asia/Tokyo"
       - "MYSQL_ROOT_HOST=%"
@@ -59,6 +62,7 @@ services:
 
   memcached:
     image: memcached:1.6
+    restart: unless-stopped
     networks:
       - my_network
 
