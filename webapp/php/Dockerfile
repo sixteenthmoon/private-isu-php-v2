@@ -11,6 +11,10 @@ RUN docker-php-ext-install pdo pdo_mysql
 RUN pecl install memcached \
   && docker-php-ext-enable memcached
 
+# コードはCOPYでイメージへ焼き込まれ稼働中は不変（bind mountではない）ため、
+# opcacheの毎リクエストstatによる変更検知は無駄なコスト。無効化する。
+RUN { echo 'opcache.validate_timestamps=0'; } > /usr/local/etc/php/conf.d/zz-isucon-opcache.ini
+
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN curl -sS https://getcomposer.org/installer | php \
