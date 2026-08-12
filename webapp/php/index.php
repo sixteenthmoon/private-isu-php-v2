@@ -131,24 +131,65 @@ $container->set('helper', function ($c) {
             $options += ['all_comments' => false];
             $all_comments = $options['all_comments'];
 
+            if (empty($results)) {
+                return [];
+            }
+
+            $db = $this->db();
+            $post_ids = array_values(array_unique(array_map(fn($p) => $p['id'], $results)));
+            $in = implode(',', array_fill(0, count($post_ids), '?'));
+
+            // comment_count をpost_idごとに1クエリでまとめて取得
+            $comment_counts = [];
+            $ps = $db->prepare("SELECT `post_id`, COUNT(*) AS `count` FROM `comments` WHERE `post_id` IN ($in) GROUP BY `post_id`");
+            $ps->execute($post_ids);
+            foreach ($ps->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $comment_counts[$row['post_id']] = (int)$row['count'];
+            }
+
+            // 表示するcomment本体もpost_idごとの上位N件をwindow関数でまとめて取得
+            $comments_by_post = [];
+            if ($all_comments) {
+                $ps = $db->prepare("SELECT * FROM `comments` WHERE `post_id` IN ($in) ORDER BY `post_id`, `created_at` DESC");
+            } else {
+                $ps = $db->prepare("
+                    SELECT `id`, `post_id`, `user_id`, `comment`, `created_at` FROM (
+                        SELECT *, ROW_NUMBER() OVER (PARTITION BY `post_id` ORDER BY `created_at` DESC) AS `rn`
+                        FROM `comments` WHERE `post_id` IN ($in)
+                    ) `t` WHERE `rn` <= 3 ORDER BY `post_id`, `created_at` DESC
+                ");
+            }
+            $ps->execute($post_ids);
+            $comment_user_ids = [];
+            foreach ($ps->fetchAll(PDO::FETCH_ASSOC) as $comment) {
+                $comments_by_post[$comment['post_id']][] = $comment;
+                $comment_user_ids[] = $comment['user_id'];
+            }
+
+            // post作者・comment作者のuserもまとめて1クエリで取得
+            $user_ids = array_values(array_unique(array_merge(
+                array_map(fn($p) => $p['user_id'], $results),
+                $comment_user_ids
+            )));
+            $users_by_id = [];
+            $uin = implode(',', array_fill(0, count($user_ids), '?'));
+            $ps = $db->prepare("SELECT * FROM `users` WHERE `id` IN ($uin)");
+            $ps->execute($user_ids);
+            foreach ($ps->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $users_by_id[$row['id']] = $row;
+            }
+
             $posts = [];
             foreach ($results as $post) {
-                $post['comment_count'] = $this->fetch_first('SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?', $post['id'])['count'];
-                $query = 'SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC';
-                if (!$all_comments) {
-                    $query .= ' LIMIT 3';
-                }
-
-                $ps = $this->db()->prepare($query);
-                $ps->execute([$post['id']]);
-                $comments = $ps->fetchAll(PDO::FETCH_ASSOC);
+                $post['comment_count'] = $comment_counts[$post['id']] ?? 0;
+                $comments = $comments_by_post[$post['id']] ?? [];
                 foreach ($comments as &$comment) {
-                    $comment['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $comment['user_id']);
+                    $comment['user'] = $users_by_id[$comment['user_id']] ?? null;
                 }
                 unset($comment);
                 $post['comments'] = array_reverse($comments);
 
-                $post['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $post['user_id']);
+                $post['user'] = $users_by_id[$post['user_id']] ?? null;
                 if ($post['user']['del_flg'] == 0) {
                     $posts[] = $post;
                 }
