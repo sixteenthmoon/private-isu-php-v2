@@ -399,13 +399,26 @@ $app->get('/image/{id}.{ext}', function (Request $request, Response $response, $
         return $response;
     }
 
-    $post = $this->get('helper')->fetch_first('SELECT * FROM `posts` WHERE `id` = ?', $args['id']);
+    // 画像はimmutable（UPDATE経路なし、DELETEはid閾値超過分のみでAUTO_INCREMENTのためid再利用もない）
+    // なのでid+extから決定的にETagを算出できる。一致すればDBに触れず304で返す。
+    $etag = '"' . md5($args['id'] . ':' . $args['ext']) . '"';
+    if ($request->getHeaderLine('If-None-Match') === $etag) {
+        return $response
+            ->withStatus(304)
+            ->withHeader('Cache-Control', 'public, max-age=86400')
+            ->withHeader('ETag', $etag);
+    }
+
+    $post = $this->get('helper')->fetch_first('SELECT `mime`, `imgdata` FROM `posts` WHERE `id` = ?', $args['id']);
 
     if (($args['ext'] == 'jpg' && $post['mime'] == 'image/jpeg') ||
         ($args['ext'] == 'png' && $post['mime'] == 'image/png') ||
         ($args['ext'] == 'gif' && $post['mime'] == 'image/gif')) {
         $response->getBody()->write($post['imgdata']);
-        return $response->withHeader('Content-Type', $post['mime']);
+        return $response
+            ->withHeader('Content-Type', $post['mime'])
+            ->withHeader('Cache-Control', 'public, max-age=86400')
+            ->withHeader('ETag', $etag);
     }
     $response->getBody()->write('404');
     return $response->withStatus(404);
