@@ -538,8 +538,8 @@ $app->post('/admin/banned', function (Request $request, Response $response) {
 
     $db = $this->get('db');
     $query = 'UPDATE `users` SET `del_flg` = ? WHERE `id` = ?';
+    $ps = $db->prepare($query);
     foreach ($params['uid'] as $id) {
-        $ps = $db->prepare($query);
         $ps->execute([1, $id]);
     }
 
