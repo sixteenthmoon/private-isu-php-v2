@@ -166,7 +166,7 @@ $container->set('helper', function ($c) {
             )));
             $users_by_id = [];
             $uin = implode(',', array_fill(0, count($user_ids), '?'));
-            $ps = $db->prepare("SELECT * FROM `users` WHERE `id` IN ($uin)");
+            $ps = $db->prepare("SELECT `id`, `account_name`, `del_flg` FROM `users` WHERE `id` IN ($uin)");
             $ps->execute($user_ids);
             while ($row = $ps->fetch(PDO::FETCH_ASSOC)) {
                 $users_by_id[$row['id']] = $row;
