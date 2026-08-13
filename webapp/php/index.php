@@ -136,7 +136,7 @@ $container->set('helper', function ($c) {
             $comment_counts = [];
             $ps = $db->prepare("SELECT `post_id`, COUNT(*) AS `count` FROM `comments` WHERE `post_id` IN ($in) GROUP BY `post_id`");
             $ps->execute($post_ids);
-            foreach ($ps->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            while ($row = $ps->fetch(PDO::FETCH_ASSOC)) {
                 $comment_counts[$row['post_id']] = (int)$row['count'];
             }
 
@@ -154,7 +154,7 @@ $container->set('helper', function ($c) {
             }
             $ps->execute($post_ids);
             $comment_user_ids = [];
-            foreach ($ps->fetchAll(PDO::FETCH_ASSOC) as $comment) {
+            while ($comment = $ps->fetch(PDO::FETCH_ASSOC)) {
                 $comments_by_post[$comment['post_id']][] = $comment;
                 $comment_user_ids[] = $comment['user_id'];
             }
@@ -168,7 +168,7 @@ $container->set('helper', function ($c) {
             $uin = implode(',', array_fill(0, count($user_ids), '?'));
             $ps = $db->prepare("SELECT * FROM `users` WHERE `id` IN ($uin)");
             $ps->execute($user_ids);
-            foreach ($ps->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            while ($row = $ps->fetch(PDO::FETCH_ASSOC)) {
                 $users_by_id[$row['id']] = $row;
             }
 
