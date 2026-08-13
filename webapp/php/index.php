@@ -9,19 +9,6 @@ require 'vendor/autoload.php';
 
 $_SERVER += ['PATH_INFO' => $_SERVER['REQUEST_URI']];
 $_SERVER['SCRIPT_NAME'] = '/' . basename($_SERVER['SCRIPT_FILENAME']);
-$file = dirname(__DIR__) . '/public' . $_SERVER['REQUEST_URI'];
-if (is_file($file)) {
-    if (PHP_SAPI == 'cli-server') return false;
-    $mimetype = [
-        'js' => 'application/javascript',
-        'css' => 'text/css',
-        'ico' => 'image/vnd.microsoft.icon',
-    ][pathinfo($file, PATHINFO_EXTENSION)] ?? false;
-    if ($mimetype) {
-        header("Content-Type: {$mimetype}");
-        echo file_get_contents($file); exit;
-    }
-}
 
 const POSTS_PER_PAGE = 20;
 const UPLOAD_LIMIT = 10 * 1024 * 1024;
