@@ -37,7 +37,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2"
+          cpus: "1"
           memory: 1g
 
   mysql:
@@ -57,7 +57,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "4"
+          cpus: "1"
           memory: 1g
 
   memcached:
