@@ -212,6 +212,7 @@ $container->set('helper', function ($c) {
 
 AppFactory::setContainer($container);
 $app = AppFactory::create();
+$app->getRouteCollector()->setCacheFile('/dev/shm/private-isu-routes.cache.php');
 
 // ------- helper method for view
 
