@@ -414,10 +414,12 @@ $app->post('/', function (Request $request, Response $response) {
             return redirect($response, '/', 302);
         }
 
-        if (strlen(file_get_contents($_FILES['file']['tmp_name'])) > UPLOAD_LIMIT) {
+        if ($_FILES['file']['size'] > UPLOAD_LIMIT) {
             $this->get('flash')->addMessage('notice', 'ファイルサイズが大きすぎます');
             return redirect($response, '/', 302);
         }
+
+        $imgdata = file_get_contents($_FILES['file']['tmp_name']);
 
         $db = $this->get('db');
         $query = 'INSERT INTO `posts` (`user_id`, `mime`, `imgdata`, `body`) VALUES (?,?,?,?)';
@@ -425,7 +427,7 @@ $app->post('/', function (Request $request, Response $response) {
         $ps->execute([
           $me['id'],
           $mime,
-          file_get_contents($_FILES['file']['tmp_name']),
+          $imgdata,
           $params['body'],
         ]);
         $pid = $db->lastInsertId();
