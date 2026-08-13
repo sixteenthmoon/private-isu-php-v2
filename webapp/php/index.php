@@ -339,8 +339,8 @@ $app->get('/', function (Request $request, Response $response) {
     $me = $this->get('helper')->get_session_user();
 
     $db = $this->get('db');
-    $ps = $db->prepare('SELECT `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`
-        FROM `posts` `p` JOIN `users` `u` ON `u`.`id` = `p`.`user_id`
+    $ps = $db->prepare('SELECT STRAIGHT_JOIN `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`
+        FROM `posts` `p` FORCE INDEX (`idx_created_at`) JOIN `users` `u` ON `u`.`id` = `p`.`user_id`
         WHERE `u`.`del_flg` = 0
         ORDER BY `p`.`created_at` DESC
         LIMIT ' . POSTS_PER_PAGE);
@@ -359,8 +359,8 @@ $app->get('/posts', function (Request $request, Response $response) {
     $params = $request->getQueryParams();
     $max_created_at = $params['max_created_at'] ?? null;
     $db = $this->get('db');
-    $ps = $db->prepare('SELECT `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`
-        FROM `posts` `p` JOIN `users` `u` ON `u`.`id` = `p`.`user_id`
+    $ps = $db->prepare('SELECT STRAIGHT_JOIN `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`
+        FROM `posts` `p` FORCE INDEX (`idx_created_at`) JOIN `users` `u` ON `u`.`id` = `p`.`user_id`
         WHERE `u`.`del_flg` = 0 AND `p`.`created_at` <= ?
         ORDER BY `p`.`created_at` DESC
         LIMIT ' . POSTS_PER_PAGE);
