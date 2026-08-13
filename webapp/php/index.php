@@ -13,16 +13,17 @@ $_SERVER['SCRIPT_NAME'] = '/' . basename($_SERVER['SCRIPT_FILENAME']);
 const POSTS_PER_PAGE = 20;
 const UPLOAD_LIMIT = 10 * 1024 * 1024;
 
-// memcached session
-$memd_addr = '127.0.0.1:11211';
-if (isset($_SERVER['ISUCONP_MEMCACHED_ADDRESS'])) {
-    $memd_addr = $_SERVER['ISUCONP_MEMCACHED_ADDRESS'];
+// tmpfs file session backend
+$session_dir = '/dev/shm/php-sessions';
+if (!is_dir($session_dir)) {
+    @mkdir($session_dir, 0777, true);
 }
-ini_set('session.save_handler', 'memcached');
-ini_set('session.save_path', $memd_addr);
+@chmod($session_dir, 0777);
+ini_set('session.save_handler', 'files');
+ini_set('session.save_path', $session_dir);
 
-// GET /image/{id}.{ext} は $_SESSION を一切参照しないため、memcachedへの
-// セッション読み出しラウンドトリップをスキップする（最頻出エンドポイントでの無駄なI/O除去）。
+// GET /image/{id}.{ext} と GET /posts は $_SESSION を一切参照しないため、
+// session fileのopen/read/lockをスキップする。
 $request_uri = $_SERVER['REQUEST_URI'] ?? '';
 $is_posts_list = $request_uri === '/posts' || strncmp($request_uri, '/posts?', 7) === 0;
 if (strncmp($request_uri, '/image/', 7) !== 0 && !$is_posts_list) {
