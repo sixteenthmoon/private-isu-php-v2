@@ -31,6 +31,6 @@ COPY ./composer.json /var/www/html
 COPY ./composer.lock /var/www/html
 WORKDIR /var/www/html
 
-RUN composer install --no-dev
+RUN composer install --no-dev --optimize-autoloader
 
 COPY . /var/www/html
