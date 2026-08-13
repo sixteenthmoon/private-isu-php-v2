@@ -88,6 +88,13 @@ $container->set('helper', function ($c) {
         }
 
         public function db_initialize() {
+            $session_dir = ini_get('session.save_path');
+            if (is_string($session_dir) && $session_dir !== '') {
+                foreach (glob(rtrim($session_dir, '/') . '/sess_*') ?: [] as $session_file) {
+                    @unlink($session_file);
+                }
+            }
+
             $db = $this->db();
             $sql = [];
             $sql[] = 'DELETE FROM users WHERE id > 1000';
@@ -257,6 +264,9 @@ function calculate_passhash($account_name, $password) {
 // --------
 
 $app->get('/initialize', function (Request $request, Response $response) {
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
     $this->get('helper')->db_initialize();
     return $response;
 });
