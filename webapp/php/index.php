@@ -135,10 +135,12 @@ $container->set('helper', function ($c) {
 
             // comment_count をpost_idごとに1クエリでまとめて取得
             $comment_counts = [];
-            $ps = $db->prepare("SELECT `post_id`, COUNT(*) AS `count` FROM `comments` WHERE `post_id` IN ($in) GROUP BY `post_id`");
-            $ps->execute($post_ids);
-            while ($row = $ps->fetch(PDO::FETCH_ASSOC)) {
-                $comment_counts[$row['post_id']] = (int)$row['count'];
+            if (!$all_comments) {
+                $ps = $db->prepare("SELECT `post_id`, COUNT(*) AS `count` FROM `comments` WHERE `post_id` IN ($in) GROUP BY `post_id`");
+                $ps->execute($post_ids);
+                while ($row = $ps->fetch(PDO::FETCH_ASSOC)) {
+                    $comment_counts[$row['post_id']] = (int)$row['count'];
+                }
             }
 
             // 表示するcomment本体もpost_idごとの上位N件をwindow関数でまとめて取得
@@ -158,6 +160,11 @@ $container->set('helper', function ($c) {
             while ($comment = $ps->fetch(PDO::FETCH_ASSOC)) {
                 $comments_by_post[$comment['post_id']][] = $comment;
                 $comment_user_ids[] = $comment['user_id'];
+            }
+            if ($all_comments) {
+                foreach ($post_ids as $post_id) {
+                    $comment_counts[$post_id] = count($comments_by_post[$post_id] ?? []);
+                }
             }
 
             // post作者・comment作者のuserもまとめて1クエリで取得
