@@ -22,6 +22,10 @@ RUN { echo 'memcached.sess_persistent=On'; } > /usr/local/etc/php/conf.d/zz-isuc
 # のため、セッションロックの取得・解放ラウンドトリップは不要なコスト。無効化する。
 RUN { echo 'memcached.sess_locking=Off'; } > /usr/local/etc/php/conf.d/zz-isucon-memcached-nolock.ini
 
+# benchmark lifecycle is reset by GET /initialize, so probabilistic file-session GC
+# only scans the growing tmpfs directory on the request path.
+RUN { echo 'session.gc_probability=0'; } > /usr/local/etc/php/conf.d/zz-isucon-session-gc.ini
+
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN curl -sS https://getcomposer.org/installer | php \
