@@ -129,7 +129,7 @@ $container->set('helper', function ($c) {
             }
 
             $db = $this->db();
-            $post_ids = array_values(array_unique(array_map(fn($p) => $p['id'], $results)));
+            $post_ids = array_column($results, 'id');
             $in = implode(',', array_fill(0, count($post_ids), '?'));
 
             // comment_count をpost_idごとに1クエリでまとめて取得
