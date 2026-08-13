@@ -473,7 +473,7 @@ $app->post('/comment', function (Request $request, Response $response) {
         return $response->withStatus(422);
     }
 
-    if (!preg_match('/\A[0-9]+\z/', $params['post_id'])) {
+    if (!ctype_digit($params['post_id'])) {
         $response->getBody()->write('post_idは整数のみです');
         return $response;
     }
