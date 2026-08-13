@@ -509,7 +509,7 @@ $app->get('/admin/banned', function (Request $request, Response $response) {
     }
 
     $db = $this->get('db');
-    $ps = $db->prepare('SELECT * FROM `users` WHERE `authority` = 0 AND `del_flg` = 0 ORDER BY `created_at` DESC');
+    $ps = $db->prepare('SELECT `id`, `account_name` FROM `users` WHERE `authority` = 0 AND `del_flg` = 0 ORDER BY `created_at` DESC');
     $ps->execute();
     $users = $ps->fetchAll(PDO::FETCH_ASSOC);
 
