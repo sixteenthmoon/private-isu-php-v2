@@ -558,11 +558,15 @@ $app->get('/@{account_name}', function (Request $request, Response $response, $a
     $results = $ps->fetchAll(PDO::FETCH_ASSOC);
     $posts = $this->get('helper')->make_posts($results);
 
-    $comment_count = $this->get('helper')->fetch_first('SELECT COUNT(*) AS count FROM `comments` WHERE `user_id` = ?', $user['id'])['count'];
-
-    $post_count = $this->get('helper')->fetch_first('SELECT COUNT(*) AS count FROM `posts` WHERE `user_id` = ?', $user['id'])['count'];
-
-    $commented_count = $this->get('helper')->fetch_first('SELECT COUNT(*) AS count FROM `comments` `c` JOIN `posts` `p` ON `p`.`id` = `c`.`post_id` WHERE `p`.`user_id` = ?', $user['id'])['count'];
+    $counts = $this->get('helper')->fetch_first(
+        'SELECT (SELECT COUNT(*) FROM `comments` WHERE `user_id` = ?) AS `comment_count`,
+                (SELECT COUNT(*) FROM `posts` WHERE `user_id` = ?) AS `post_count`,
+                (SELECT COUNT(*) FROM `comments` `c` JOIN `posts` `p` ON `p`.`id` = `c`.`post_id` WHERE `p`.`user_id` = ?) AS `commented_count`',
+        $user['id'], $user['id'], $user['id']
+    );
+    $comment_count = $counts['comment_count'];
+    $post_count = $counts['post_count'];
+    $commented_count = $counts['commented_count'];
 
     $me = $this->get('helper')->get_session_user();
 
