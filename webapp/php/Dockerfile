@@ -13,7 +13,7 @@ RUN pecl install memcached \
 
 # コードはCOPYでイメージへ焼き込まれ稼働中は不変（bind mountではない）ため、
 # opcacheの毎リクエストstatによる変更検知は無駄なコスト。無効化する。
-RUN { echo 'opcache.validate_timestamps=0'; } > /usr/local/etc/php/conf.d/zz-isucon-opcache.ini
+RUN { echo 'opcache.validate_timestamps=0'; echo 'opcache.jit_buffer_size=64M'; } > /usr/local/etc/php/conf.d/zz-isucon-opcache.ini
 
 # セッションのmemcached接続をPHP-FPM worker単位で使い回し、毎リクエストの接続確立を省く。
 RUN { echo 'memcached.sess_persistent=On'; } > /usr/local/etc/php/conf.d/zz-isucon-memcached-persistent.ini
