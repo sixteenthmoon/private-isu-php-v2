@@ -37,6 +37,7 @@ $container->set('settings', function() {
         'db' => [
             'host' => $_SERVER['ISUCONP_DB_HOST'] ?? 'localhost',
             'port' => $_SERVER['ISUCONP_DB_PORT'] ?? 3306,
+            'socket' => $_SERVER['ISUCONP_DB_SOCKET'] ?? null,
             'username' => $_SERVER['ISUCONP_DB_USER'] ?? 'root',
             'password' => $_SERVER['ISUCONP_DB_PASSWORD'] ?? null,
             'database' => $_SERVER['ISUCONP_DB_NAME'] ?? 'isuconp',
@@ -45,8 +46,12 @@ $container->set('settings', function() {
 });
 $container->set('db', function ($c) {
     $config = $c->get('settings');
+    $socket = $config['db']['socket'];
+    $dsn = is_string($socket) && $socket !== '' && is_readable($socket)
+        ? "mysql:dbname={$config['db']['database']};unix_socket={$socket};charset=utf8mb4"
+        : "mysql:dbname={$config['db']['database']};host={$config['db']['host']};port={$config['db']['port']};charset=utf8mb4";
     return new PDO(
-        "mysql:dbname={$config['db']['database']};host={$config['db']['host']};port={$config['db']['port']};charset=utf8mb4",
+        $dsn,
         $config['db']['username'],
         $config['db']['password'],
         [

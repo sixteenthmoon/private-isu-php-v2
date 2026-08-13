@@ -25,6 +25,7 @@ services:
     environment:
       ISUCONP_DB_HOST: mysql
       ISUCONP_DB_PORT: 3306
+      ISUCONP_DB_SOCKET: /var/run/mysqld/mysqld.sock
       ISUCONP_DB_USER: root
       ISUCONP_DB_PASSWORD: root
       ISUCONP_DB_NAME: isuconp
@@ -33,6 +34,7 @@ services:
       - my_network
     volumes:
       - ./public:/home/public
+      - mysql-run:/var/run/mysqld
     init: true
     deploy:
       resources:
@@ -49,6 +51,7 @@ services:
       - "MYSQL_ROOT_PASSWORD=root"
     volumes:
       - mysql:/var/lib/mysql
+      - mysql-run:/var/run/mysqld
       - ./sql:/docker-entrypoint-initdb.d
     ports:
       - "3306:3306"
@@ -68,6 +71,7 @@ services:
 
 volumes:
   mysql:
+  mysql-run:
 
 networks:
   my_network:
