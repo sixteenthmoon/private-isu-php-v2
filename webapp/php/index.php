@@ -23,8 +23,8 @@ ini_set('session.save_path', $memd_addr);
 
 // GET /image/{id}.{ext} は $_SESSION を一切参照しないため、memcachedへの
 // セッション読み出しラウンドトリップをスキップする（最頻出エンドポイントでの無駄なI/O除去）。
-$request_path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-if ($request_path === null || strpos($request_path, '/image/') !== 0) {
+$request_uri = $_SERVER['REQUEST_URI'] ?? '';
+if (strncmp($request_uri, '/image/', 7) !== 0) {
     session_start();
 }
 
