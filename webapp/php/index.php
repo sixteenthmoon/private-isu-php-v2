@@ -24,7 +24,8 @@ ini_set('session.save_path', $memd_addr);
 // GET /image/{id}.{ext} は $_SESSION を一切参照しないため、memcachedへの
 // セッション読み出しラウンドトリップをスキップする（最頻出エンドポイントでの無駄なI/O除去）。
 $request_uri = $_SERVER['REQUEST_URI'] ?? '';
-if (strncmp($request_uri, '/image/', 7) !== 0) {
+$is_posts_list = $request_uri === '/posts' || strncmp($request_uri, '/posts?', 7) === 0;
+if (strncmp($request_uri, '/image/', 7) !== 0 && !$is_posts_list) {
     session_start();
 }
 
