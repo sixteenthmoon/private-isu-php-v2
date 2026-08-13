@@ -94,7 +94,7 @@ $container->set('helper', function ($c) {
             $db = $this->db();
             $ps = $db->prepare($query);
             $ps->execute($params);
-            $result = $ps->fetch();
+            $result = $ps->fetch(PDO::FETCH_ASSOC);
             $ps->closeCursor();
             return $result;
         }
