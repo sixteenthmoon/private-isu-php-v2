@@ -18,6 +18,10 @@ RUN { echo 'opcache.validate_timestamps=0'; } > /usr/local/etc/php/conf.d/zz-isu
 # セッションのmemcached接続をPHP-FPM worker単位で使い回し、毎リクエストの接続確立を省く。
 RUN { echo 'memcached.sess_persistent=On'; } > /usr/local/etc/php/conf.d/zz-isucon-memcached-persistent.ini
 
+# 同一セッションIDへの並行リクエストが起きないシナリオ構成（benchmarker/cli.go, scenario.go確認済み）
+# のため、セッションロックの取得・解放ラウンドトリップは不要なコスト。無効化する。
+RUN { echo 'memcached.sess_locking=Off'; } > /usr/local/etc/php/conf.d/zz-isucon-memcached-nolock.ini
+
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN curl -sS https://getcomposer.org/installer | php \
