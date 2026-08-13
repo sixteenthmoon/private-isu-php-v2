@@ -57,7 +57,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2"
+          cpus: "4"
           memory: 1g
 
   memcached:
