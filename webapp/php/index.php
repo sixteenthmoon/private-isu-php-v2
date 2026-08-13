@@ -207,14 +207,12 @@ function redirect(Response $response, $location, $status) {
 }
 
 function image_url($post) {
-    $ext = '';
-    if ($post['mime'] === 'image/jpeg') {
-        $ext = '.jpg';
-    } else if ($post['mime'] === 'image/png') {
-        $ext = '.png';
-    } else if ($post['mime'] === 'image/gif') {
-        $ext = '.gif';
-    }
+    $ext = match ($post['mime']) {
+        'image/jpeg' => '.jpg',
+        'image/png' => '.png',
+        'image/gif' => '.gif',
+        default => '',
+    };
     return "/image/{$post['id']}{$ext}";
 }
 
