@@ -15,6 +15,9 @@ RUN pecl install memcached \
 # opcacheの毎リクエストstatによる変更検知は無駄なコスト。無効化する。
 RUN { echo 'opcache.validate_timestamps=0'; } > /usr/local/etc/php/conf.d/zz-isucon-opcache.ini
 
+# セッションのmemcached接続をPHP-FPM worker単位で使い回し、毎リクエストの接続確立を省く。
+RUN { echo 'memcached.sess_persistent=On'; } > /usr/local/etc/php/conf.d/zz-isucon-memcached-persistent.ini
+
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN curl -sS https://getcomposer.org/installer | php \
