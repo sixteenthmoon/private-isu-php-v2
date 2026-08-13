@@ -143,7 +143,7 @@ $container->set('helper', function ($c) {
             // 表示するcomment本体もpost_idごとの上位N件をwindow関数でまとめて取得
             $comments_by_post = [];
             if ($all_comments) {
-                $ps = $db->prepare("SELECT * FROM `comments` WHERE `post_id` IN ($in) ORDER BY `post_id`, `created_at` DESC");
+                $ps = $db->prepare("SELECT `id`, `post_id`, `user_id`, `comment`, `created_at` FROM `comments` WHERE `post_id` IN ($in) ORDER BY `post_id`, `created_at` DESC");
             } else {
                 $ps = $db->prepare("
                     SELECT `id`, `post_id`, `user_id`, `comment`, `created_at` FROM (
