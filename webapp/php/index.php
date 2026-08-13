@@ -115,7 +115,7 @@ $container->set('helper', function ($c) {
                 return null;
             }
 
-            $user = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $_SESSION['user']['id']);
+            $user = $this->fetch_first('SELECT `id`, `account_name`, `authority`, `del_flg` FROM `users` WHERE `id` = ?', $_SESSION['user']['id']);
 
             return $user ?: null;
         }
