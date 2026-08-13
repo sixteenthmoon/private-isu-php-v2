@@ -18,7 +18,7 @@
         <div class="isu-post-comment-count">
           comments: <b><?= escape_html($post['comment_count']) ?></b>
         </div>
-    
+
         <?php foreach ($post['comments'] as $comment): ?>
         <div class="isu-comment">
           <a href="/@<?= escape_html(rawurlencode($comment['user']['account_name'])) ?>" class="isu-comment-account-name"><?= escape_html($comment['user']['account_name']) ?></a>
