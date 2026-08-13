@@ -13,15 +13,6 @@ $_SERVER['SCRIPT_NAME'] = '/' . basename($_SERVER['SCRIPT_FILENAME']);
 const POSTS_PER_PAGE = 20;
 const UPLOAD_LIMIT = 10 * 1024 * 1024;
 
-// tmpfs file session backend
-$session_dir = '/dev/shm/php-sessions';
-if (!is_dir($session_dir)) {
-    @mkdir($session_dir, 0777, true);
-}
-@chmod($session_dir, 0777);
-ini_set('session.save_handler', 'files');
-ini_set('session.save_path', $session_dir);
-
 // GET /image/{id}.{ext} と GET /posts は $_SESSION を一切参照しないため、
 // session fileのopen/read/lockをスキップする。
 $request_uri = $_SERVER['REQUEST_URI'] ?? '';

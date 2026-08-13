@@ -24,7 +24,7 @@ RUN { echo 'memcached.sess_locking=Off'; } > /usr/local/etc/php/conf.d/zz-isucon
 
 # benchmark lifecycle is reset by GET /initialize, so probabilistic file-session GC
 # only scans the growing tmpfs directory on the request path.
-RUN { echo 'session.gc_probability=0'; } > /usr/local/etc/php/conf.d/zz-isucon-session-gc.ini
+RUN { echo 'session.save_handler=files'; echo 'session.save_path=/dev/shm/php-sessions'; echo 'session.gc_probability=0'; } > /usr/local/etc/php/conf.d/zz-isucon-session-files.ini
 
 # app is capped at one CPU; keep I/O overlap while reducing excess runnable workers.
 RUN { echo '[www]'; echo 'pm.max_children=2'; echo 'pm.max_spare_servers=2'; } > /usr/local/etc/php-fpm.d/zz-isucon-www.conf
@@ -41,3 +41,7 @@ WORKDIR /var/www/html
 RUN composer install --no-dev --optimize-autoloader
 
 COPY . /var/www/html
+
+RUN chmod +x /var/www/html/isucon-entrypoint.sh
+ENTRYPOINT ["/var/www/html/isucon-entrypoint.sh"]
+CMD ["php-fpm"]
