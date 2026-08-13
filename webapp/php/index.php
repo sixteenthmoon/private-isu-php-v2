@@ -152,26 +152,36 @@ $container->set('helper', function ($c) {
             // comment count専用のPDO round-tripを発生させない。
             $comments_by_post = [];
             if ($all_comments) {
-                $ps = $db->prepare("SELECT `id`, `post_id`, `user_id`, `comment`, `created_at` FROM `comments` WHERE `post_id` IN ($in) ORDER BY `post_id`, `created_at` DESC");
+                $ps = $db->prepare("SELECT `c`.`id`, `c`.`post_id`, `c`.`user_id`, `c`.`comment`, `c`.`created_at`,
+                                           `cu`.`account_name` AS `comment_user_account_name`, `cu`.`del_flg` AS `comment_user_del_flg`
+                                    FROM `comments` `c` JOIN `users` `cu` ON `cu`.`id` = `c`.`user_id`
+                                    WHERE `c`.`post_id` IN ($in) ORDER BY `c`.`post_id`, `c`.`created_at` DESC");
             } else {
                 $ps = $db->prepare("
-                    SELECT `id`, `post_id`, `user_id`, `comment`, `created_at`, `total_count` FROM (
-                        SELECT `id`, `post_id`, `user_id`, `comment`, `created_at`,
-                               ROW_NUMBER() OVER (PARTITION BY `post_id` ORDER BY `created_at` DESC) AS `rn`,
-                               COUNT(*) OVER (PARTITION BY `post_id`) AS `total_count`
-                        FROM `comments` WHERE `post_id` IN ($in)
+                    SELECT `id`, `post_id`, `user_id`, `comment`, `created_at`, `comment_user_account_name`,
+                           `comment_user_del_flg`, `total_count` FROM (
+                        SELECT `c`.`id`, `c`.`post_id`, `c`.`user_id`, `c`.`comment`, `c`.`created_at`,
+                               `cu`.`account_name` AS `comment_user_account_name`, `cu`.`del_flg` AS `comment_user_del_flg`,
+                               ROW_NUMBER() OVER (PARTITION BY `c`.`post_id` ORDER BY `c`.`created_at` DESC) AS `rn`,
+                               COUNT(*) OVER (PARTITION BY `c`.`post_id`) AS `total_count`
+                        FROM `comments` `c` JOIN `users` `cu` ON `cu`.`id` = `c`.`user_id`
+                        WHERE `c`.`post_id` IN ($in)
                     ) `t` WHERE `rn` <= 3 ORDER BY `post_id`, `created_at` DESC
                 ");
             }
             $ps->execute($post_ids);
-            $comment_user_ids = [];
             while ($comment = $ps->fetch(PDO::FETCH_ASSOC)) {
                 if (!$all_comments) {
                     $comment_counts[$comment['post_id']] = (int)$comment['total_count'];
                     unset($comment['total_count']);
                 }
+                $comment['user'] = [
+                    'id' => $comment['user_id'],
+                    'account_name' => $comment['comment_user_account_name'],
+                    'del_flg' => $comment['comment_user_del_flg'],
+                ];
+                unset($comment['comment_user_account_name'], $comment['comment_user_del_flg']);
                 $comments_by_post[$comment['post_id']][] = $comment;
-                $comment_user_ids[] = $comment['user_id'];
             }
             if ($all_comments) {
                 foreach ($post_ids as $post_id) {
@@ -179,30 +189,18 @@ $container->set('helper', function ($c) {
                 }
             }
 
-            // post作者・comment作者のuserもまとめて1クエリで取得
-            $user_ids = array_values(array_unique(array_merge(
-                array_map(fn($p) => $p['user_id'], $results),
-                $comment_user_ids
-            )));
-            $users_by_id = [];
-            $uin = implode(',', array_fill(0, count($user_ids), '?'));
-            $ps = $db->prepare("SELECT `id`, `account_name`, `del_flg` FROM `users` WHERE `id` IN ($uin)");
-            $ps->execute($user_ids);
-            while ($row = $ps->fetch(PDO::FETCH_ASSOC)) {
-                $users_by_id[$row['id']] = $row;
-            }
-
             $posts = [];
             foreach ($results as $post) {
                 $post['comment_count'] = $comment_counts[$post['id']] ?? 0;
                 $comments = $comments_by_post[$post['id']] ?? [];
-                foreach ($comments as &$comment) {
-                    $comment['user'] = $users_by_id[$comment['user_id']] ?? null;
-                }
-                unset($comment);
                 $post['comments'] = array_reverse($comments);
 
-                $post['user'] = $users_by_id[$post['user_id']] ?? null;
+                $post['user'] = [
+                    'id' => $post['user_id'],
+                    'account_name' => $post['post_user_account_name'],
+                    'del_flg' => $post['post_user_del_flg'],
+                ];
+                unset($post['post_user_account_name'], $post['post_user_del_flg']);
                 if ($post['user']['del_flg'] == 0) {
                     $posts[] = $post;
                 }
@@ -355,7 +353,8 @@ $app->get('/', function (Request $request, Response $response) {
     $me = $this->get('helper')->get_session_user();
 
     $db = $this->get('db');
-    $ps = $db->prepare('SELECT STRAIGHT_JOIN `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`
+    $ps = $db->prepare('SELECT STRAIGHT_JOIN `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`,
+               `u`.`account_name` AS `post_user_account_name`, `u`.`del_flg` AS `post_user_del_flg`
         FROM `posts` `p` FORCE INDEX (`idx_created_at`) JOIN `users` `u` ON `u`.`id` = `p`.`user_id`
         WHERE `u`.`del_flg` = 0
         ORDER BY `p`.`created_at` DESC
@@ -375,7 +374,8 @@ $app->get('/posts', function (Request $request, Response $response) {
     $params = $request->getQueryParams();
     $max_created_at = $params['max_created_at'] ?? null;
     $db = $this->get('db');
-    $ps = $db->prepare('SELECT STRAIGHT_JOIN `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`
+    $ps = $db->prepare('SELECT STRAIGHT_JOIN `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`,
+               `u`.`account_name` AS `post_user_account_name`, `u`.`del_flg` AS `post_user_del_flg`
         FROM `posts` `p` FORCE INDEX (`idx_created_at`) JOIN `users` `u` ON `u`.`id` = `p`.`user_id`
         WHERE `u`.`del_flg` = 0 AND `p`.`created_at` <= ?
         ORDER BY `p`.`created_at` DESC
@@ -389,7 +389,9 @@ $app->get('/posts', function (Request $request, Response $response) {
 
 $app->get('/posts/{id}', function (Request $request, Response $response, $args) {
     $db = $this->get('db');
-    $ps = $db->prepare('SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `id` = ?');
+    $ps = $db->prepare('SELECT `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`,
+                               `u`.`account_name` AS `post_user_account_name`, `u`.`del_flg` AS `post_user_del_flg`
+                        FROM `posts` `p` JOIN `users` `u` ON `u`.`id` = `p`.`user_id` WHERE `p`.`id` = ?');
     $ps->execute([$args['id']]);
     $results = $ps->fetchAll(PDO::FETCH_ASSOC);
     $posts = $this->get('helper')->make_posts($results, ['all_comments' => true]);
@@ -575,7 +577,10 @@ $app->get('/@{account_name}', function (Request $request, Response $response, $a
         return $response->withStatus(404);
     }
 
-    $ps = $db->prepare('SELECT `id`, `user_id`, `body`, `created_at`, `mime` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC LIMIT ' . POSTS_PER_PAGE);
+    $ps = $db->prepare('SELECT `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`created_at`, `p`.`mime`,
+                               `u`.`account_name` AS `post_user_account_name`, `u`.`del_flg` AS `post_user_del_flg`
+                        FROM `posts` `p` JOIN `users` `u` ON `u`.`id` = `p`.`user_id`
+                        WHERE `p`.`user_id` = ? ORDER BY `p`.`created_at` DESC LIMIT ' . POSTS_PER_PAGE);
     $ps->execute([$user['id']]);
     $results = $ps->fetchAll(PDO::FETCH_ASSOC);
     $posts = $this->get('helper')->make_posts($results);
