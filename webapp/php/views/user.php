@@ -5,4 +5,8 @@
   <div>被コメント数 <span class="isu-commented-count"><?= escape_html($commented_count) ?></span></div>
 </div>
 
-<?php require __DIR__ . '/posts.php' ?>
+<div class="isu-posts">
+  <?php foreach ($posts as $post): ?>
+    <?php require __DIR__ . '/post.php' ?>
+  <?php endforeach ?>
+</div>
