@@ -146,24 +146,19 @@ $container->set('helper', function ($c) {
             $post_ids = array_column($results, 'id');
             $in = implode(',', array_fill(0, count($post_ids), '?'));
 
-            // comment_count をpost_idごとに1クエリでまとめて取得
             $comment_counts = [];
-            if (!$all_comments) {
-                $ps = $db->prepare("SELECT `post_id`, COUNT(*) AS `count` FROM `comments` WHERE `post_id` IN ($in) GROUP BY `post_id`");
-                $ps->execute($post_ids);
-                while ($row = $ps->fetch(PDO::FETCH_ASSOC)) {
-                    $comment_counts[$row['post_id']] = (int)$row['count'];
-                }
-            }
 
-            // 表示するcomment本体もpost_idごとの上位N件をwindow関数でまとめて取得
+            // 一覧では上位3件と全件数を同じwindow queryで取得し、
+            // comment count専用のPDO round-tripを発生させない。
             $comments_by_post = [];
             if ($all_comments) {
                 $ps = $db->prepare("SELECT `id`, `post_id`, `user_id`, `comment`, `created_at` FROM `comments` WHERE `post_id` IN ($in) ORDER BY `post_id`, `created_at` DESC");
             } else {
                 $ps = $db->prepare("
-                    SELECT `id`, `post_id`, `user_id`, `comment`, `created_at` FROM (
-                        SELECT *, ROW_NUMBER() OVER (PARTITION BY `post_id` ORDER BY `created_at` DESC) AS `rn`
+                    SELECT `id`, `post_id`, `user_id`, `comment`, `created_at`, `total_count` FROM (
+                        SELECT `id`, `post_id`, `user_id`, `comment`, `created_at`,
+                               ROW_NUMBER() OVER (PARTITION BY `post_id` ORDER BY `created_at` DESC) AS `rn`,
+                               COUNT(*) OVER (PARTITION BY `post_id`) AS `total_count`
                         FROM `comments` WHERE `post_id` IN ($in)
                     ) `t` WHERE `rn` <= 3 ORDER BY `post_id`, `created_at` DESC
                 ");
@@ -171,6 +166,10 @@ $container->set('helper', function ($c) {
             $ps->execute($post_ids);
             $comment_user_ids = [];
             while ($comment = $ps->fetch(PDO::FETCH_ASSOC)) {
+                if (!$all_comments) {
+                    $comment_counts[$comment['post_id']] = (int)$comment['total_count'];
+                    unset($comment['total_count']);
+                }
                 $comments_by_post[$comment['post_id']][] = $comment;
                 $comment_user_ids[] = $comment['user_id'];
             }
