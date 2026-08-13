@@ -26,6 +26,9 @@ RUN { echo 'memcached.sess_locking=Off'; } > /usr/local/etc/php/conf.d/zz-isucon
 # only scans the growing tmpfs directory on the request path.
 RUN { echo 'session.gc_probability=0'; } > /usr/local/etc/php/conf.d/zz-isucon-session-gc.ini
 
+# app is capped at one CPU; keep I/O overlap while reducing excess runnable workers.
+RUN { echo '[www]'; echo 'pm.max_children=4'; } > /usr/local/etc/php-fpm.d/zz-isucon-www.conf
+
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN curl -sS https://getcomposer.org/installer | php \
