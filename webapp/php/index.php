@@ -443,7 +443,7 @@ $app->get('/image/{id}.{ext}', function (Request $request, Response $response, $
 
     // 画像はimmutable（UPDATE経路なし、DELETEはid閾値超過分のみでAUTO_INCREMENTのためid再利用もない）
     // なのでid+extから決定的にETagを算出できる。一致すればDBに触れず304で返す。
-    $etag = '"' . md5($args['id'] . ':' . $args['ext']) . '"';
+    $etag = '"i-' . $args['id'] . '-' . $args['ext'] . '"';
     if ($request->getHeaderLine('If-None-Match') === $etag) {
         return $response
             ->withStatus(304)
