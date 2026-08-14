@@ -7,7 +7,7 @@
       <textarea name="body"></textarea>
     </div>
     <div class="form-submit">
-      <input type="hidden" name="csrf_token" value="<?= escape_html($_SESSION['csrf_token']) ?>">
+      <input type="hidden" name="csrf_token" value="<?= escape_html($_SESSION['csrf_token'] ?? '') ?>">
       <input type="submit" name="submit" value="submit">
     </div>
     <?php if ($flash): ?>
@@ -50,7 +50,7 @@
           <form method="post" action="/comment">
             <input type="text" name="comment">
             <input type="hidden" name="post_id" value="<?= $post['id'] ?>">
-            <input type="hidden" name="csrf_token" value="<?= escape_html($_SESSION['csrf_token']) ?>">
+            <input type="hidden" name="csrf_token" value="<?= escape_html($_SESSION['csrf_token'] ?? '') ?>">
             <input type="submit" name="submit" value="submit">
           </form>
         </div>
