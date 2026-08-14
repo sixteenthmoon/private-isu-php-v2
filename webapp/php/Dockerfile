@@ -27,7 +27,7 @@ RUN { echo 'memcached.sess_locking=Off'; } > /usr/local/etc/php/conf.d/zz-isucon
 RUN { echo 'session.save_handler=files'; echo 'session.save_path=/dev/shm/php-sessions'; echo 'session.gc_probability=0'; } > /usr/local/etc/php/conf.d/zz-isucon-session-files.ini
 
 # app is capped at one CPU; keep I/O overlap while reducing excess runnable workers.
-RUN { echo '[www]'; echo 'pm.max_children=2'; echo 'pm.max_spare_servers=2'; } > /usr/local/etc/php-fpm.d/zz-isucon-www.conf
+RUN { echo '[www]'; echo 'pm = static'; echo 'pm.max_children=2'; } > /usr/local/etc/php-fpm.d/zz-isucon-www.conf
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
