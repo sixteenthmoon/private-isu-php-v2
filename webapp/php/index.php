@@ -387,18 +387,22 @@ $app->post('/register', function (Request $request, Response $response) {
         return redirect($response, '/register', 302);
     }
 
-    $user = $this->get('helper')->fetch_first('SELECT 1 FROM users WHERE `account_name` = ?', $account_name);
-    if ($user) {
-        $this->get('flash')->addMessage('notice', 'アカウント名がすでに使われています');
-        return redirect($response, '/register', 302);
-    }
-
+    // account_nameはusers.UNIQUE KEYで一意性が保証されているため、事前SELECTは不要。
+    // INSERT自体の重複キー例外(SQLSTATE 23000)で重複を検出する。
     $db = $this->get('db');
     $ps = $db->prepare('INSERT INTO `users` (`account_name`, `passhash`) VALUES (?,?)');
-    $ps->execute([
-        $account_name,
-        calculate_passhash($account_name, $password)
-    ]);
+    try {
+        $ps->execute([
+            $account_name,
+            calculate_passhash($account_name, $password)
+        ]);
+    } catch (PDOException $e) {
+        if ($e->getCode() === '23000') {
+            $this->get('flash')->addMessage('notice', 'アカウント名がすでに使われています');
+            return redirect($response, '/register', 302);
+        }
+        throw $e;
+    }
     $_SESSION['user'] = [
         'id' => $db->lastInsertId(),
     ];
