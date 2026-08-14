@@ -60,6 +60,10 @@ $container->set('memcached', function ($c) {
     $config = $c->get('settings');
     [$host, $port] = explode(':', $config['memcached']['address']);
     $m = new Memcached('pool');
+    // cache値は数百byte程度のPHP配列のみのため、zlib圧縮はCPUの純損失。
+    // binary protocolでgetMultiのpipelining効率も上げる。
+    $m->setOption(Memcached::OPT_COMPRESSION, false);
+    $m->setOption(Memcached::OPT_BINARY_PROTOCOL, true);
     if (!count($m->getServerList())) {
         $m->addServer($host, (int)$port);
     }
