@@ -143,7 +143,17 @@ $container->set('helper', function ($c) {
                 return null;
             }
 
-            $user = $this->fetch_first('SELECT `id`, `account_name`, `authority`, `del_flg` FROM `users` WHERE `id` = ?', $_SESSION['user']['id']);
+            $id = $_SESSION['user']['id'];
+            $key = 'u:' . $id;
+            $cached = $this->mc()->get($key);
+            if ($cached !== false) {
+                return $cached;
+            }
+
+            $user = $this->fetch_first('SELECT `id`, `account_name`, `authority`, `del_flg` FROM `users` WHERE `id` = ?', $id);
+            if ($user) {
+                $this->mc()->set($key, $user, 300);
+            }
 
             return $user ?: null;
         }
@@ -614,10 +624,12 @@ $app->post('/admin/banned', function (Request $request, Response $response) {
     }
 
     $db = $this->get('db');
+    $mc = $this->get('helper')->mc();
     $query = 'UPDATE `users` SET `del_flg` = ? WHERE `id` = ?';
     $ps = $db->prepare($query);
     foreach ($params['uid'] as $id) {
         $ps->execute([1, $id]);
+        $mc->delete('u:' . $id);
     }
 
     return redirect($response, '/admin/banned', 302);
