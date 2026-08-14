@@ -515,6 +515,7 @@ $app->post('/', function (Request $request, Response $response) {
           $params['body'],
         ]);
         $pid = $db->lastInsertId();
+        $this->get('helper')->mc()->delete('uc:' . $me['id']);
         return redirect($response, "/posts/{$pid}", 302);
     } else {
         $this->get('flash')->addMessage('notice', '画像が必須です');
@@ -572,14 +573,21 @@ $app->post('/comment', function (Request $request, Response $response) {
     }
     $post_id = $params['post_id'];
 
+    $db = $this->get('db');
     $query = 'INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?)';
-    $ps = $this->get('db')->prepare($query);
+    $ps = $db->prepare($query);
     $ps->execute([
         $post_id,
         $me['id'],
         $params['comment']
     ]);
-    $this->get('helper')->mc()->delete('c3:' . $post_id);
+    $mc = $this->get('helper')->mc();
+    $mc->delete('c3:' . $post_id);
+    $mc->delete('uc:' . $me['id']);
+    $owner = $this->get('helper')->fetch_first('SELECT `user_id` FROM `posts` WHERE `id` = ?', $post_id);
+    if ($owner) {
+        $mc->delete('uc:' . $owner['user_id']);
+    }
 
     return redirect($response, "/posts/{$post_id}", 302);
 });
@@ -651,12 +659,20 @@ $app->get('/@{account_name}', function (Request $request, Response $response, $a
     $results = $ps->fetchAll(PDO::FETCH_ASSOC);
     $posts = $this->get('helper')->make_posts($results);
 
-    $counts = $this->get('helper')->fetch_first(
-        'SELECT (SELECT COUNT(*) FROM `comments` WHERE `user_id` = ?) AS `comment_count`,
-                (SELECT COUNT(*) FROM `posts` WHERE `user_id` = ?) AS `post_count`,
-                (SELECT COUNT(*) FROM `comments` `c` JOIN `posts` `p` ON `p`.`id` = `c`.`post_id` WHERE `p`.`user_id` = ?) AS `commented_count`',
-        $user['id'], $user['id'], $user['id']
-    );
+    // 投稿数/comment数/被comment数はuser_id単位でmemcachedへcache-aside。
+    // 該当userの新規投稿・新規comment・自分の投稿への被commentの3経路でdelete-on-write。
+    $mc = $this->get('helper')->mc();
+    $counts_key = 'uc:' . $user['id'];
+    $counts = $mc->get($counts_key);
+    if ($counts === false) {
+        $counts = $this->get('helper')->fetch_first(
+            'SELECT (SELECT COUNT(*) FROM `comments` WHERE `user_id` = ?) AS `comment_count`,
+                    (SELECT COUNT(*) FROM `posts` WHERE `user_id` = ?) AS `post_count`,
+                    (SELECT COUNT(*) FROM `comments` `c` JOIN `posts` `p` ON `p`.`id` = `c`.`post_id` WHERE `p`.`user_id` = ?) AS `commented_count`',
+            $user['id'], $user['id'], $user['id']
+        );
+        $mc->set($counts_key, $counts, 300);
+    }
     $comment_count = $counts['comment_count'];
     $post_count = $counts['post_count'];
     $commented_count = $counts['commented_count'];
