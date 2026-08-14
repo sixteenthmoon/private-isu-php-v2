@@ -34,6 +34,9 @@ $container->set('settings', function() {
             'password' => $_SERVER['ISUCONP_DB_PASSWORD'] ?? null,
             'database' => $_SERVER['ISUCONP_DB_NAME'] ?? 'isuconp',
         ],
+        'memcached' => [
+            'address' => $_SERVER['ISUCONP_MEMCACHED_ADDRESS'] ?? 'localhost:11211',
+        ],
     ];
 });
 $container->set('db', function ($c) {
@@ -53,6 +56,16 @@ $container->set('db', function ($c) {
     );
 });
 
+$container->set('memcached', function ($c) {
+    $config = $c->get('settings');
+    [$host, $port] = explode(':', $config['memcached']['address']);
+    $m = new Memcached('pool');
+    if (!count($m->getServerList())) {
+        $m->addServer($host, (int)$port);
+    }
+    return $m;
+});
+
 $container->set('view', function ($c) {
     return new class(__DIR__ . '/views/') extends \Slim\Views\PhpRenderer {
         public function render(\Psr\Http\Message\ResponseInterface $response, string $template, array $data = []): ResponseInterface {
@@ -69,13 +82,19 @@ $container->set('flash', function () {
 $container->set('helper', function ($c) {
     return new class($c) {
         public PDO $db;
+        public Memcached $mc;
 
         public function __construct($c) {
             $this->db = $c->get('db');
+            $this->mc = $c->get('memcached');
         }
 
         public function db() {
             return $this->db;
+        }
+
+        public function mc() {
+            return $this->mc;
         }
 
         public function db_initialize() {
@@ -138,45 +157,85 @@ $container->set('helper', function ($c) {
             $in = implode(',', array_fill(0, count($post_ids), '?'));
 
             $comment_counts = [];
-
-            // 一覧では上位3件と全件数を同じwindow queryで取得し、
-            // comment count専用のPDO round-tripを発生させない。
             $comments_by_post = [];
+
             if ($all_comments) {
                 $ps = $db->prepare("SELECT `c`.`id`, `c`.`post_id`, `c`.`user_id`, `c`.`comment`, `c`.`created_at`,
                                            `cu`.`account_name` AS `comment_user_account_name`, `cu`.`del_flg` AS `comment_user_del_flg`
                                     FROM `comments` `c` JOIN `users` `cu` ON `cu`.`id` = `c`.`user_id`
                                     WHERE `c`.`post_id` IN ($in) ORDER BY `c`.`post_id`, `c`.`created_at` DESC");
-            } else {
-                $ps = $db->prepare("
-                    SELECT `id`, `post_id`, `user_id`, `comment`, `created_at`, `comment_user_account_name`,
-                           `comment_user_del_flg`, `total_count` FROM (
-                        SELECT `c`.`id`, `c`.`post_id`, `c`.`user_id`, `c`.`comment`, `c`.`created_at`,
-                               `cu`.`account_name` AS `comment_user_account_name`, `cu`.`del_flg` AS `comment_user_del_flg`,
-                               ROW_NUMBER() OVER (PARTITION BY `c`.`post_id` ORDER BY `c`.`created_at` DESC) AS `rn`,
-                               COUNT(*) OVER (PARTITION BY `c`.`post_id`) AS `total_count`
-                        FROM `comments` `c` JOIN `users` `cu` ON `cu`.`id` = `c`.`user_id`
-                        WHERE `c`.`post_id` IN ($in)
-                    ) `t` WHERE `rn` <= 3 ORDER BY `post_id`, `created_at` DESC
-                ");
-            }
-            $ps->execute($post_ids);
-            while ($comment = $ps->fetch(PDO::FETCH_ASSOC)) {
-                if (!$all_comments) {
-                    $comment_counts[$comment['post_id']] = (int)$comment['total_count'];
-                    unset($comment['total_count']);
+                $ps->execute($post_ids);
+                while ($comment = $ps->fetch(PDO::FETCH_ASSOC)) {
+                    $comment['user'] = [
+                        'id' => $comment['user_id'],
+                        'account_name' => $comment['comment_user_account_name'],
+                        'del_flg' => $comment['comment_user_del_flg'],
+                    ];
+                    unset($comment['comment_user_account_name'], $comment['comment_user_del_flg']);
+                    $comments_by_post[$comment['post_id']][] = $comment;
                 }
-                $comment['user'] = [
-                    'id' => $comment['user_id'],
-                    'account_name' => $comment['comment_user_account_name'],
-                    'del_flg' => $comment['comment_user_del_flg'],
-                ];
-                unset($comment['comment_user_account_name'], $comment['comment_user_del_flg']);
-                $comments_by_post[$comment['post_id']][] = $comment;
-            }
-            if ($all_comments) {
                 foreach ($post_ids as $post_id) {
                     $comment_counts[$post_id] = count($comments_by_post[$post_id] ?? []);
+                }
+            } else {
+                // 一覧の上位3件+全件数はpost_id単位でmemcachedへcache-aside。
+                // 新規commentはPOST /commentで該当post_idのキーをdeleteし整合を保つ
+                // （TTLは安全網。del_flgはtemplateで未使用のためbanとのstale干渉なし）。
+                $mc = $this->mc();
+                $cache_keys = array_map(fn($id) => 'c3:' . $id, $post_ids);
+                $cached = $mc->getMulti($cache_keys) ?: [];
+
+                $missing_ids = [];
+                foreach ($post_ids as $post_id) {
+                    $key = 'c3:' . $post_id;
+                    if (array_key_exists($key, $cached)) {
+                        $entry = $cached[$key];
+                        $comment_counts[$post_id] = $entry['count'];
+                        if ($entry['comments']) {
+                            $comments_by_post[$post_id] = $entry['comments'];
+                        }
+                    } else {
+                        $missing_ids[] = $post_id;
+                    }
+                }
+
+                if ($missing_ids) {
+                    $in_missing = implode(',', array_fill(0, count($missing_ids), '?'));
+                    $ps = $db->prepare("
+                        SELECT `id`, `post_id`, `user_id`, `comment`, `created_at`, `comment_user_account_name`,
+                               `comment_user_del_flg`, `total_count` FROM (
+                            SELECT `c`.`id`, `c`.`post_id`, `c`.`user_id`, `c`.`comment`, `c`.`created_at`,
+                                   `cu`.`account_name` AS `comment_user_account_name`, `cu`.`del_flg` AS `comment_user_del_flg`,
+                                   ROW_NUMBER() OVER (PARTITION BY `c`.`post_id` ORDER BY `c`.`created_at` DESC) AS `rn`,
+                                   COUNT(*) OVER (PARTITION BY `c`.`post_id`) AS `total_count`
+                            FROM `comments` `c` JOIN `users` `cu` ON `cu`.`id` = `c`.`user_id`
+                            WHERE `c`.`post_id` IN ($in_missing)
+                        ) `t` WHERE `rn` <= 3 ORDER BY `post_id`, `created_at` DESC
+                    ");
+                    $ps->execute($missing_ids);
+                    $fetched_by_post = [];
+                    $fetched_counts = [];
+                    while ($comment = $ps->fetch(PDO::FETCH_ASSOC)) {
+                        $post_id = $comment['post_id'];
+                        $fetched_counts[$post_id] = (int)$comment['total_count'];
+                        unset($comment['total_count']);
+                        $comment['user'] = [
+                            'id' => $comment['user_id'],
+                            'account_name' => $comment['comment_user_account_name'],
+                            'del_flg' => $comment['comment_user_del_flg'],
+                        ];
+                        unset($comment['comment_user_account_name'], $comment['comment_user_del_flg']);
+                        $fetched_by_post[$post_id][] = $comment;
+                    }
+                    foreach ($missing_ids as $post_id) {
+                        $count = $fetched_counts[$post_id] ?? 0;
+                        $comments = $fetched_by_post[$post_id] ?? [];
+                        $comment_counts[$post_id] = $count;
+                        if ($comments) {
+                            $comments_by_post[$post_id] = $comments;
+                        }
+                        $mc->set('c3:' . $post_id, ['count' => $count, 'comments' => $comments], 300);
+                    }
                 }
             }
 
@@ -507,6 +566,7 @@ $app->post('/comment', function (Request $request, Response $response) {
         $me['id'],
         $params['comment']
     ]);
+    $this->get('helper')->mc()->delete('c3:' . $post_id);
 
     return redirect($response, "/posts/{$post_id}", 302);
 });
