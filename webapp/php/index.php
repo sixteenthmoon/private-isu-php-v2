@@ -149,17 +149,15 @@ $container->set('helper', function ($c) {
                                     WHERE `c`.`post_id` IN ($in) ORDER BY `c`.`post_id`, `c`.`created_at` DESC");
             } else {
                 $ps = $db->prepare("
-                    SELECT `t`.`id`, `t`.`post_id`, `t`.`user_id`, `t`.`comment`, `t`.`created_at`,
-                           `cu`.`account_name` AS `comment_user_account_name`, `cu`.`del_flg` AS `comment_user_del_flg`,
-                           `t`.`total_count`
-                    FROM (
+                    SELECT `id`, `post_id`, `user_id`, `comment`, `created_at`, `comment_user_account_name`,
+                           `comment_user_del_flg`, `total_count` FROM (
                         SELECT `c`.`id`, `c`.`post_id`, `c`.`user_id`, `c`.`comment`, `c`.`created_at`,
+                               `cu`.`account_name` AS `comment_user_account_name`, `cu`.`del_flg` AS `comment_user_del_flg`,
                                ROW_NUMBER() OVER (PARTITION BY `c`.`post_id` ORDER BY `c`.`created_at` DESC) AS `rn`,
                                COUNT(*) OVER (PARTITION BY `c`.`post_id`) AS `total_count`
-                        FROM `comments` `c`
+                        FROM `comments` `c` JOIN `users` `cu` ON `cu`.`id` = `c`.`user_id`
                         WHERE `c`.`post_id` IN ($in)
-                    ) `t` JOIN `users` `cu` ON `cu`.`id` = `t`.`user_id`
-                    WHERE `t`.`rn` <= 3 ORDER BY `t`.`post_id`, `t`.`created_at` DESC
+                    ) `t` WHERE `rn` <= 3 ORDER BY `post_id`, `created_at` DESC
                 ");
             }
             $ps->execute($post_ids);
