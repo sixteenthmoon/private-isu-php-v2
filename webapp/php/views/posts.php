@@ -1,8 +1,9 @@
 <div class="isu-posts">
   <?php foreach ($posts as $post): ?>
+    <?php $post_user_name = escape_html($post['user']['account_name']); $post_user_url = escape_html(rawurlencode($post['user']['account_name'])); ?>
     <div class="isu-post" id="pid_<?= $post['id'] ?>" data-created-at="<?= escape_html($post['created_at']) ?>">
       <div class="isu-post-header">
-        <a href="/@<?= escape_html(rawurlencode($post['user']['account_name'])) ?>" class="isu-post-account-name"><?= escape_html($post['user']['account_name']) ?></a>
+        <a href="/@<?= $post_user_url ?>" class="isu-post-account-name"><?= $post_user_name ?></a>
         <a href="/posts/<?= $post['id'] ?>" class="isu-post-permalink">
           <time class="timeago" datetime="<?= escape_html($post['created_at']) ?>"></time>
         </a>
@@ -11,7 +12,7 @@
         <img src="<?= escape_html(image_url($post)) ?>" class="isu-image">
       </div>
       <div class="isu-post-text">
-        <a href="/@<?= escape_html(rawurlencode($post['user']['account_name'])) ?>" class="isu-post-account-name"><?= escape_html($post['user']['account_name']) ?></a>
+        <a href="/@<?= $post_user_url ?>" class="isu-post-account-name"><?= $post_user_name ?></a>
         <?= escape_html(nl2br($post['body'])) ?>
       </div>
       <div class="isu-post-comment">
