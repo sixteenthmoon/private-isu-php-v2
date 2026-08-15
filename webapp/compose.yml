@@ -75,7 +75,7 @@ services:
     # 名前付きvolumeがroot:root 755で作られ、イメージ既定のmemcacheユーザーでは
     # socketファイルを作成できないためrootで実行する。
     user: root
-    command: -s /var/run/memcached/memcached.sock -a 766
+    command: -u root -s /var/run/memcached/memcached.sock -a 766
     volumes:
       - memcached-run:/var/run/memcached
     networks:
