@@ -18,7 +18,9 @@ const UPLOAD_LIMIT = 10 * 1024 * 1024;
 $request_uri = $_SERVER['REQUEST_URI'] ?? '';
 $is_posts_list = $request_uri === '/posts' || strncmp($request_uri, '/posts?', 7) === 0;
 if (strncmp($request_uri, '/image/', 7) !== 0 && !$is_posts_list) {
+    $__sess_t0 = microtime(true);
     session_start();
+    error_log(sprintf('TIMING session_start=%.3fms uri=%s', (microtime(true)-$__sess_t0)*1000, $request_uri));
 }
 
 // dependency
