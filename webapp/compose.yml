@@ -72,6 +72,9 @@ services:
     image: memcached:1.6
     restart: unless-stopped
     # appとunix socketで通信し、docker bridge経由のTCP接続overheadを避ける。
+    # 名前付きvolumeがroot:root 755で作られ、イメージ既定のmemcacheユーザーでは
+    # socketファイルを作成できないためrootで実行する。
+    user: root
     command: -s /var/run/memcached/memcached.sock -a 766
     volumes:
       - memcached-run:/var/run/memcached
