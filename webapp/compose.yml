@@ -55,7 +55,7 @@ services:
     restart: unless-stopped
     # ベンチ環境はinitializeで毎回既知状態へリセットされるため、mysqld crash時に
     # 最大1秒分のcommit済みトランザクションを失うリスクを許容しcommit毎fsyncを避ける。
-    command: --innodb-flush-log-at-trx-commit=2 --innodb-buffer-pool-size=256M
+    command: --innodb-flush-log-at-trx-commit=2 --innodb-buffer-pool-size=256M --innodb-buffer-pool-dump-pct=100
     environment:
       #- "TZ=Asia/Tokyo"
       - "MYSQL_ROOT_HOST=%"
