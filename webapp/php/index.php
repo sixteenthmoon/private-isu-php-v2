@@ -422,7 +422,10 @@ $app->get('/logout', function (Request $request, Response $response) {
 });
 
 $app->get('/', function (Request $request, Response $response) {
+    // diag: phase timing (temporary, will revert)
+    $t0 = hrtime(true);
     $me = $this->get('helper')->get_session_user();
+    $t1 = hrtime(true);
 
     $db = $this->get('db');
     $ps = $db->prepare('SELECT STRAIGHT_JOIN `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`,
@@ -433,13 +436,21 @@ $app->get('/', function (Request $request, Response $response) {
         LIMIT ' . POSTS_PER_PAGE);
     $ps->execute();
     $results = $ps->fetchAll(PDO::FETCH_ASSOC);
+    $t2 = hrtime(true);
     $posts = $this->get('helper')->make_posts($results);
+    $t3 = hrtime(true);
 
-    return $this->get('view')->render($response, 'index.php', [
+    $rendered = $this->get('view')->render($response, 'index.php', [
         'posts' => $posts,
         'me' => $me,
         'flash' => $this->get('flash')->getFirstMessage('notice'),
     ]);
+    $t4 = hrtime(true);
+    error_log(sprintf(
+        'DIAG_TIMING session=%.1fus query=%.1fus make_posts=%.1fus render=%.1fus total=%.1fus',
+        ($t1-$t0)/1000, ($t2-$t1)/1000, ($t3-$t2)/1000, ($t4-$t3)/1000, ($t4-$t0)/1000
+    ));
+    return $rendered;
 });
 
 $app->get('/posts', function (Request $request, Response $response) {
