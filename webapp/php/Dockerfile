@@ -27,7 +27,9 @@ RUN { echo 'memcached.sess_locking=Off'; } > /usr/local/etc/php/conf.d/zz-isucon
 RUN { echo 'session.save_handler=files'; echo 'session.save_path=/dev/shm/php-sessions'; echo 'session.gc_probability=0'; } > /usr/local/etc/php/conf.d/zz-isucon-session-files.ini
 
 # app is capped at one CPU; keep I/O overlap while reducing excess runnable workers.
-RUN { echo '[www]'; echo 'pm = static'; echo 'pm.max_children=2'; } > /usr/local/etc/php-fpm.d/zz-isucon-www.conf
+# nginxとunix socketで通信し、docker bridge経由のTCP接続overheadを避ける（mysql/memcachedと同型）。
+# socketはnginx(別container、別uid)からも接続するためmode 0666で権限問題を回避する。
+RUN { echo '[www]'; echo 'pm = static'; echo 'pm.max_children=2'; echo 'listen = /var/run/php-fpm/php-fpm.sock'; echo 'listen.mode = 0666'; } > /usr/local/etc/php-fpm.d/zz-isucon-www.conf
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 

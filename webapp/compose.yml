@@ -8,6 +8,7 @@ services:
     volumes:
       - ./etc/nginx/conf.d:/etc/nginx/conf.d
       - ./public:/public
+      - php-fpm-run:/var/run/php-fpm
     ports:
       - "80:80"
     networks:
@@ -37,6 +38,7 @@ services:
       - ./public:/home/public
       - mysql-run:/var/run/mysqld
       - memcached-run:/var/run/memcached
+      - php-fpm-run:/var/run/php-fpm
     init: true
     deploy:
       resources:
@@ -85,6 +87,7 @@ volumes:
   mysql:
   mysql-run:
   memcached-run:
+  php-fpm-run:
 
 networks:
   my_network:
