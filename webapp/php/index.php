@@ -156,7 +156,7 @@ $container->set('helper', function ($c) {
 
             $user = $this->fetch_first('SELECT `id`, `account_name`, `authority`, `del_flg` FROM `users` WHERE `id` = ?', $id);
             if ($user) {
-                $this->mc()->set($key, $user, 300);
+                $this->mc()->set($key, $user, 3600);
             }
 
             return $user ?: null;
@@ -252,7 +252,7 @@ $container->set('helper', function ($c) {
                         if ($comments) {
                             $comments_by_post[$post_id] = $comments;
                         }
-                        $mc->set('c3:' . $post_id, ['count' => $count, 'comments' => $comments], 300);
+                        $mc->set('c3:' . $post_id, ['count' => $count, 'comments' => $comments], 3600);
                     }
                 }
             }
@@ -680,7 +680,7 @@ $app->get('/@{account_name}', function (Request $request, Response $response, $a
                     (SELECT COUNT(*) FROM `comments` `c` JOIN `posts` `p` ON `p`.`id` = `c`.`post_id` WHERE `p`.`user_id` = ?) AS `commented_count`',
             $user['id'], $user['id'], $user['id']
         );
-        $mc->set($counts_key, $counts, 300);
+        $mc->set($counts_key, $counts, 3600);
     }
     $comment_count = $counts['comment_count'];
     $post_count = $counts['post_count'];
