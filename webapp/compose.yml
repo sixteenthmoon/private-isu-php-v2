@@ -30,11 +30,13 @@ services:
       ISUCONP_DB_PASSWORD: root
       ISUCONP_DB_NAME: isuconp
       ISUCONP_MEMCACHED_ADDRESS: memcached:11211
+      ISUCONP_MEMCACHED_SOCKET: /var/run/memcached/memcached.sock
     networks:
       - my_network
     volumes:
       - ./public:/home/public
       - mysql-run:/var/run/mysqld
+      - memcached-run:/var/run/memcached
     init: true
     deploy:
       resources:
@@ -69,12 +71,17 @@ services:
   memcached:
     image: memcached:1.6
     restart: unless-stopped
+    # appとunix socketで通信し、docker bridge経由のTCP接続overheadを避ける。
+    command: -s /var/run/memcached/memcached.sock -a 766
+    volumes:
+      - memcached-run:/var/run/memcached
     networks:
       - my_network
 
 volumes:
   mysql:
   mysql-run:
+  memcached-run:
 
 networks:
   my_network:

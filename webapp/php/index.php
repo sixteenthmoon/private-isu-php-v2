@@ -36,6 +36,7 @@ $container->set('settings', function() {
         ],
         'memcached' => [
             'address' => $_SERVER['ISUCONP_MEMCACHED_ADDRESS'] ?? 'localhost:11211',
+            'socket' => $_SERVER['ISUCONP_MEMCACHED_SOCKET'] ?? null,
         ],
     ];
 });
@@ -58,13 +59,17 @@ $container->set('db', function ($c) {
 
 $container->set('memcached', function ($c) {
     $config = $c->get('settings');
-    [$host, $port] = explode(':', $config['memcached']['address']);
     $m = new Memcached('pool');
     // cache値は数百byte程度のPHP配列のみのため、zlib圧縮はCPUの純損失。
-    // binary protocolでgetMultiのpipelining効率も上げる。
     $m->setOption(Memcached::OPT_COMPRESSION, false);
     if (!count($m->getServerList())) {
-        $m->addServer($host, (int)$port);
+        $socket = $config['memcached']['socket'];
+        if (is_string($socket) && $socket !== '' && is_readable($socket)) {
+            $m->addServer($socket, 0);
+        } else {
+            [$host, $port] = explode(':', $config['memcached']['address']);
+            $m->addServer($host, (int)$port);
+        }
     }
     return $m;
 });
