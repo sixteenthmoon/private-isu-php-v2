@@ -9,6 +9,10 @@ services:
       - ./etc/nginx/conf.d:/etc/nginx/conf.d
       - ./public:/public
       - php-fpm-run:/var/run/php-fpm
+      # fastcgi_cache格納先。containerの一時レイヤ上だとdocker compose down等の
+      # コンテナ再作成で消え、restart直後にキャッシュを埋め直すコスト(cold-start dip)を
+      # 毎回払うことになるため永続volume化する。
+      - nginx-fastcgi-cache:/var/cache/nginx/fastcgi_image
     ports:
       - "80:80"
     networks:
@@ -88,6 +92,7 @@ volumes:
   mysql-run:
   memcached-run:
   php-fpm-run:
+  nginx-fastcgi-cache:
 
 networks:
   my_network:
