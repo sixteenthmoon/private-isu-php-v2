@@ -113,6 +113,14 @@ $container->set('helper', function ($c) {
                 }
             }
 
+            // memcachedのcache-aside群(u:, anx:, po:, c3:, uc:, pl:)は個々の書き込み経路での
+            // 能動的invalidationのみを前提に設計しているが、initializeによるDELETE/UPDATEは
+            // その経路を一切通らない。前run由来のエントリがinitialize後も生き残ると、
+            // 例えばuc:の投稿数が古いまま・pl:が既に削除された投稿を指したままになりうる
+            // (実際にpl:でこの不整合による404多発を確認しrollbackした経緯がある)。
+            // initialize時点でmemcached全体をflushし、この種のrun間staleを構造的に排除する。
+            $this->mc()->flush();
+
             $db = $this->db();
             $sql = [];
             $sql[] = 'DELETE FROM users WHERE id > 1000';
