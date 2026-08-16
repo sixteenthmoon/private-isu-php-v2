@@ -159,6 +159,22 @@ $container->set('helper', function ($c) {
             return $user ?: null;
         }
 
+        // posts.user_idは投稿後不変(所有者変更経路が存在しない)ため、
+        // po:{post_id}は能動的invalidation不要の永続cache-aside。
+        public function fetch_post_owner_id($post_id) {
+            $key = 'po:' . $post_id;
+            $mc = $this->mc();
+            $owner_id = $mc->get($key);
+            if ($owner_id === false) {
+                $owner = $this->fetch_first('SELECT `user_id` FROM `posts` WHERE `id` = ?', $post_id);
+                $owner_id = $owner ? $owner['user_id'] : null;
+                if ($owner_id !== null) {
+                    $mc->set($key, $owner_id, 3600);
+                }
+            }
+            return $owner_id;
+        }
+
         public function get_session_user() {
             if (!isset($_SESSION['user'], $_SESSION['user']['id'])) {
                 return null;
@@ -610,9 +626,9 @@ $app->post('/comment', function (Request $request, Response $response) {
     $mc = $this->get('helper')->mc();
     $mc->delete('c3:' . $post_id);
     $mc->delete('uc:' . $me['id']);
-    $owner = $this->get('helper')->fetch_first('SELECT `user_id` FROM `posts` WHERE `id` = ?', $post_id);
-    if ($owner) {
-        $mc->delete('uc:' . $owner['user_id']);
+    $owner_id = $this->get('helper')->fetch_post_owner_id($post_id);
+    if ($owner_id !== null) {
+        $mc->delete('uc:' . $owner_id);
     }
 
     return redirect($response, "/posts/{$post_id}", 302);
