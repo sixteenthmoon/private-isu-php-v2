@@ -187,17 +187,23 @@ $container->set('helper', function ($c) {
             if (!isset($_SESSION['user'], $_SESSION['user']['id'])) {
                 return null;
             }
+            return $this->fetch_user_by_id($_SESSION['user']['id']);
+        }
 
-            $id = $_SESSION['user']['id'];
+        // u:{id}はban時に能動的invalidation済み(POST /admin/banned参照)、
+        // memcached-flush-on-initialize-01によりrun境界のstaleも解消済み。
+        // 任意のuser idに対する汎用cache-asideとして、session user以外からも使う。
+        public function fetch_user_by_id($id) {
             $key = 'u:' . $id;
-            $cached = $this->mc()->get($key);
+            $mc = $this->mc();
+            $cached = $mc->get($key);
             if ($cached !== false) {
                 return $cached;
             }
 
             $user = $this->fetch_first('SELECT `id`, `account_name`, `authority`, `del_flg` FROM `users` WHERE `id` = ?', $id);
             if ($user) {
-                $this->mc()->set($key, $user, 3600);
+                $mc->set($key, $user, 3600);
             }
 
             return $user ?: null;
@@ -501,13 +507,33 @@ $app->get('/posts', function (Request $request, Response $response) {
 });
 
 $app->get('/posts/{id}', function (Request $request, Response $response, $args) {
-    $db = $this->get('db');
-    $ps = $db->prepare('SELECT `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`,
-                               `u`.`account_name` AS `post_user_account_name`, `u`.`del_flg` AS `post_user_del_flg`
-                        FROM `posts` `p` JOIN `users` `u` ON `u`.`id` = `p`.`user_id` WHERE `p`.`id` = ?');
-    $ps->execute([$args['id']]);
-    $results = $ps->fetchAll(PDO::FETCH_ASSOC);
-    $posts = $this->get('helper')->make_posts($results, ['all_comments' => true]);
+    $helper = $this->get('helper');
+    $post_id = $args['id'];
+    // postの不変フィールド(id/user_id/body/mime/created_at/account_name)のみpd:へcache-aside。
+    // del_flgは可変なのでcacheに含めず、既にban時にinvalidation済みのu:{owner_id}から取る
+    // (pl:incidentの教訓: 新たなinvalidation経路を増やさず既存の正しい経路へ委譲する)。
+    $pd_key = 'pd:' . $post_id;
+    $mc = $helper->mc();
+    $post_row = $mc->get($pd_key);
+    if ($post_row === false) {
+        $db = $this->get('db');
+        $ps = $db->prepare('SELECT `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`,
+                                   `u`.`account_name` AS `post_user_account_name`
+                            FROM `posts` `p` JOIN `users` `u` ON `u`.`id` = `p`.`user_id` WHERE `p`.`id` = ?');
+        $ps->execute([$post_id]);
+        $post_row = $ps->fetch(PDO::FETCH_ASSOC);
+        if ($post_row) {
+            $mc->set($pd_key, $post_row, 3600);
+        }
+    }
+
+    $results = [];
+    if ($post_row) {
+        $owner = $helper->fetch_user_by_id($post_row['user_id']);
+        $post_row['post_user_del_flg'] = $owner ? $owner['del_flg'] : 1;
+        $results = [$post_row];
+    }
+    $posts = $helper->make_posts($results, ['all_comments' => true]);
 
     if (count($posts) == 0) {
         $response->getBody()->write('404');
