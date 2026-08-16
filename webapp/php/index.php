@@ -644,8 +644,12 @@ $app->post('/admin/banned', function (Request $request, Response $response) {
     $query = 'UPDATE `users` SET `del_flg` = ? WHERE `id` = ?';
     $ps = $db->prepare($query);
     foreach ($params['uid'] as $id) {
+        $account_name = $this->get('helper')->fetch_first('SELECT `account_name` FROM `users` WHERE `id` = ?', $id)['account_name'] ?? null;
         $ps->execute([1, $id]);
         $mc->delete('u:' . $id);
+        if ($account_name !== null) {
+            $mc->delete('an:' . $account_name);
+        }
     }
 
     return redirect($response, '/admin/banned', 302);
@@ -653,9 +657,20 @@ $app->post('/admin/banned', function (Request $request, Response $response) {
 
 $app->get('/@{account_name}', function (Request $request, Response $response, $args) {
     $db = $this->get('db');
-    $user = $this->get('helper')->fetch_first('SELECT `id`, `account_name` FROM `users` WHERE `account_name` = ? AND `del_flg` = 0', $args['account_name']);
-
+    $helper = $this->get('helper');
+    // account_nameは登録後不変・idも不変のため、ban以外で対応関係は変わらない。
+    // an:{account_name}をcache-asideし、banのみ能動的にinvalidateする。
+    $an_key = 'an:' . $args['account_name'];
+    $mc = $helper->mc();
+    $user = $mc->get($an_key);
     if ($user === false) {
+        $user = $helper->fetch_first('SELECT `id`, `account_name` FROM `users` WHERE `account_name` = ? AND `del_flg` = 0', $args['account_name']);
+        if ($user) {
+            $mc->set($an_key, $user, 3600);
+        }
+    }
+
+    if (!$user) {
         $response->getBody()->write('404');
         return $response->withStatus(404);
     }
