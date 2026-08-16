@@ -1,4 +1,8 @@
-name: private-isu
+# private-isu-php-v1という別checkoutも同じ既定project名"private-isu"を使っており、
+# どちらかでdocker compose upすると相手のcontainerを無言で置き換えてしまう事故が
+# 実際に発生した(container名衝突、v1のmysqld/nginxがv2のcontainer名を乗っ取り、
+# app/nginxはv1側の設定と噛み合わずcrash)。project名を明示して衝突を避ける。
+name: private-isu-v2
 services:
   nginx:
     image: nginx:1.30
@@ -88,11 +92,19 @@ services:
       - my_network
 
 volumes:
+  # project名変更(private-isu -> private-isu-v2)でvolume名が既定では
+  # private-isu-v2_* に変わってしまい既存データ(seed+蓄積)から切り離されるため、
+  # 既存の実volume名へ明示的に固定する。
   mysql:
+    name: private-isu_mysql
   mysql-run:
+    name: private-isu_mysql-run
   memcached-run:
+    name: private-isu_memcached-run
   php-fpm-run:
+    name: private-isu_php-fpm-run
   nginx-fastcgi-cache:
+    name: private-isu_nginx-fastcgi-cache
 
 networks:
   my_network:
