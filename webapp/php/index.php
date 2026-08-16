@@ -15,9 +15,22 @@ const UPLOAD_LIMIT = 10 * 1024 * 1024;
 
 // GET /image/{id}.{ext} と GET /posts は $_SESSION を一切参照しないため、
 // session fileのopen/read/lockをスキップする。
+// GET /posts/{id}, GET /@{account_name}, POST /comment, GET/POST /admin/banned は
+// $_SESSION を読み取るのみで書き込まない（flash serviceも呼ばない）ことをコード全文で
+// 確認済みのため、read_and_closeでlock取得・書き戻しをスキップする。
 $request_uri = $_SERVER['REQUEST_URI'] ?? '';
-$is_posts_list = $request_uri === '/posts' || strncmp($request_uri, '/posts?', 7) === 0;
-if (strncmp($request_uri, '/image/', 7) !== 0 && !$is_posts_list) {
+$request_path = strtok($request_uri, '?');
+$is_posts_list = $request_path === '/posts';
+$is_image = strncmp($request_path, '/image/', 7) === 0;
+$is_readonly_session_route = strncmp($request_path, '/posts/', 7) === 0
+    || strncmp($request_path, '/@', 2) === 0
+    || $request_path === '/comment'
+    || strncmp($request_path, '/admin/banned', 13) === 0;
+if ($is_image || $is_posts_list) {
+    // no session
+} elseif ($is_readonly_session_route) {
+    session_start(['read_and_close' => true]);
+} else {
     session_start();
 }
 
