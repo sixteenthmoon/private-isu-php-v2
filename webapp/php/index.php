@@ -484,15 +484,23 @@ $app->get('/logout', function (Request $request, Response $response) {
 $app->get('/', function (Request $request, Response $response) {
     $me = $this->get('helper')->get_session_user();
 
-    $db = $this->get('db');
-    $ps = $db->prepare('SELECT STRAIGHT_JOIN `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`,
-               `u`.`account_name` AS `post_user_account_name`, `u`.`del_flg` AS `post_user_del_flg`
-        FROM `posts` `p` FORCE INDEX (`idx_created_at`) JOIN `users` `u` ON `u`.`id` = `p`.`user_id`
-        WHERE `u`.`del_flg` = 0
-        ORDER BY `p`.`created_at` DESC
-        LIMIT ' . POSTS_PER_PAGE);
-    $ps->execute();
-    $results = $ps->fetchAll(PDO::FETCH_ASSOC);
+    // トップページの最新20件はuser全体に対するグローバルな1本のcache-aside(idx:latest)。
+    // 新規投稿(POST /)とban(POST /admin/banned)の両方でinvalidateし、
+    // pl:/u:と同じ能動的invalidation方針に揃える(TTLは安全網)。
+    $idx_mc = $this->get('helper')->mc();
+    $results = $idx_mc->get('idx:latest');
+    if ($results === false) {
+        $db = $this->get('db');
+        $ps = $db->prepare('SELECT STRAIGHT_JOIN `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`,
+                   `u`.`account_name` AS `post_user_account_name`, `u`.`del_flg` AS `post_user_del_flg`
+            FROM `posts` `p` FORCE INDEX (`idx_created_at`) JOIN `users` `u` ON `u`.`id` = `p`.`user_id`
+            WHERE `u`.`del_flg` = 0
+            ORDER BY `p`.`created_at` DESC
+            LIMIT ' . POSTS_PER_PAGE);
+        $ps->execute();
+        $results = $ps->fetchAll(PDO::FETCH_ASSOC);
+        $idx_mc->set('idx:latest', $results, 3600);
+    }
     $posts = $this->get('helper')->make_posts($results);
 
     return $this->get('view')->render($response, 'index.php', [
@@ -607,6 +615,7 @@ $app->post('/', function (Request $request, Response $response) {
         $upload_mc = $this->get('helper')->mc();
         $upload_mc->delete('uc:' . $me['id']);
         $upload_mc->delete('pl:' . $me['id']);
+        $upload_mc->delete('idx:latest');
         return redirect($response, "/posts/{$pid}", 302);
     } else {
         $this->get('flash')->addMessage('notice', '画像が必須です');
@@ -733,6 +742,7 @@ $app->post('/admin/banned', function (Request $request, Response $response) {
             $mc->delete('anx:' . $account_name);
         }
     }
+    $mc->delete('idx:latest');
 
     return redirect($response, '/admin/banned', 302);
 });
