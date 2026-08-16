@@ -135,11 +135,28 @@ $container->set('helper', function ($c) {
         }
 
         public function try_login($account_name, $password) {
-            $user = $this->fetch_first('SELECT `id`, `account_name`, `passhash` FROM users WHERE account_name = ? AND del_flg = 0', $account_name);
-            if ($user !== false && calculate_passhash($user['account_name'], $password) == $user['passhash']) {
+            $user = $this->fetch_user_by_account_name($account_name);
+            if ($user && calculate_passhash($user['account_name'], $password) == $user['passhash']) {
                 return $user;
             }
             return null;
+        }
+
+        // account_nameは登録後不変・passhashも変更手段が無いため、ban以外でこの行の
+        // 対応関係は変わらない。GET /@{account_name}とtry_login()で共有するcache-aside。
+        // キーはanx:(account-name-lookup-memcached-cache-01の旧an:とはvalue形状が異なる
+        // ため、デプロイをまたいで生存する旧形式エントリと衝突しないよう別名にしている)。
+        public function fetch_user_by_account_name($account_name) {
+            $key = 'anx:' . $account_name;
+            $mc = $this->mc();
+            $user = $mc->get($key);
+            if ($user === false) {
+                $user = $this->fetch_first('SELECT `id`, `account_name`, `passhash` FROM users WHERE account_name = ? AND del_flg = 0', $account_name);
+                if ($user) {
+                    $mc->set($key, $user, 3600);
+                }
+            }
+            return $user ?: null;
         }
 
         public function get_session_user() {
@@ -648,7 +665,7 @@ $app->post('/admin/banned', function (Request $request, Response $response) {
         $ps->execute([1, $id]);
         $mc->delete('u:' . $id);
         if ($account_name !== null) {
-            $mc->delete('an:' . $account_name);
+            $mc->delete('anx:' . $account_name);
         }
     }
 
@@ -658,17 +675,8 @@ $app->post('/admin/banned', function (Request $request, Response $response) {
 $app->get('/@{account_name}', function (Request $request, Response $response, $args) {
     $db = $this->get('db');
     $helper = $this->get('helper');
-    // account_nameは登録後不変・idも不変のため、ban以外で対応関係は変わらない。
-    // an:{account_name}をcache-asideし、banのみ能動的にinvalidateする。
-    $an_key = 'an:' . $args['account_name'];
-    $mc = $helper->mc();
-    $user = $mc->get($an_key);
-    if ($user === false) {
-        $user = $helper->fetch_first('SELECT `id`, `account_name` FROM `users` WHERE `account_name` = ? AND `del_flg` = 0', $args['account_name']);
-        if ($user) {
-            $mc->set($an_key, $user, 3600);
-        }
-    }
+    // try_login()と同一のanx:{account_name}キャッシュを共有する（fetch_user_by_account_name参照）。
+    $user = $helper->fetch_user_by_account_name($args['account_name']);
 
     if (!$user) {
         $response->getBody()->write('404');
@@ -703,7 +711,11 @@ $app->get('/@{account_name}', function (Request $request, Response $response, $a
 
     $me = $this->get('helper')->get_session_user();
 
-    return $this->get('view')->render($response, 'user.php', ['posts' => $posts, 'user' => $user, 'post_count' => $post_count, 'comment_count' => $comment_count, 'commented_count'=> $commented_count, 'me' => $me]);
+    // fetch_user_by_account_name()はtry_login()と共有するためpasshashを含むが、
+    // view層には渡さない(表示に不要な機微情報をテンプレートへ流さない)。
+    $profile_user = ['id' => $user['id'], 'account_name' => $user['account_name']];
+
+    return $this->get('view')->render($response, 'user.php', ['posts' => $posts, 'user' => $profile_user, 'post_count' => $post_count, 'comment_count' => $comment_count, 'commented_count'=> $commented_count, 'me' => $me]);
 });
 
 $app->run();
