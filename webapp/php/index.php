@@ -565,7 +565,9 @@ $app->post('/', function (Request $request, Response $response) {
           $params['body'],
         ]);
         $pid = $db->lastInsertId();
-        $this->get('helper')->mc()->delete('uc:' . $me['id']);
+        $upload_mc = $this->get('helper')->mc();
+        $upload_mc->delete('uc:' . $me['id']);
+        $upload_mc->delete('pl:' . $me['id']);
         return redirect($response, "/posts/{$pid}", 302);
     } else {
         $this->get('flash')->addMessage('notice', '画像が必須です');
@@ -707,12 +709,23 @@ $app->get('/@{account_name}', function (Request $request, Response $response, $a
         return $response->withStatus(404);
     }
 
-    $ps = $db->prepare('SELECT `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`created_at`, `p`.`mime`,
-                               `u`.`account_name` AS `post_user_account_name`, `u`.`del_flg` AS `post_user_del_flg`
-                        FROM `posts` `p` JOIN `users` `u` ON `u`.`id` = `p`.`user_id`
-                        WHERE `p`.`user_id` = ? ORDER BY `p`.`created_at` DESC LIMIT ' . POSTS_PER_PAGE);
-    $ps->execute([$user['id']]);
-    $results = $ps->fetchAll(PDO::FETCH_ASSOC);
+    // ここに到達する時点でfetch_user_by_account_name()がdel_flg=0を確認済みのため、
+    // この一覧は「banされていないuserの投稿一覧」以外になり得ない。banされたuserの
+    // post一覧キャッシュへ到達する経路自体が無い(上流のanx:キャッシュがban時に
+    // 能動的invalidationされ、そこで404になるため)ので、pl:{user_id}は新規投稿時の
+    // invalidationのみで安全にcache-asideできる。
+    $pl_key = 'pl:' . $user['id'];
+    $pl_mc = $this->get('helper')->mc();
+    $results = $pl_mc->get($pl_key);
+    if ($results === false) {
+        $ps = $db->prepare('SELECT `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`created_at`, `p`.`mime`,
+                                   `u`.`account_name` AS `post_user_account_name`, `u`.`del_flg` AS `post_user_del_flg`
+                            FROM `posts` `p` JOIN `users` `u` ON `u`.`id` = `p`.`user_id`
+                            WHERE `p`.`user_id` = ? ORDER BY `p`.`created_at` DESC LIMIT ' . POSTS_PER_PAGE);
+        $ps->execute([$user['id']]);
+        $results = $ps->fetchAll(PDO::FETCH_ASSOC);
+        $pl_mc->set($pl_key, $results, 3600);
+    }
     $posts = $this->get('helper')->make_posts($results);
 
     // 投稿数/comment数/被comment数はuser_id単位でmemcachedへcache-aside。
