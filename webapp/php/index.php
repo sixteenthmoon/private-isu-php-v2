@@ -507,8 +507,20 @@ $app->get('/logout', function (Request $request, Response $response) {
     return redirect($response, '/', 302);
 });
 
+// diag: cpu-time-phase-diagnostic-01 (temporary, will revert). getrusage()ベースで
+// 実CPU時間(ru_utime+ru_stime、cgroup quotaが課金する対象そのもの)をフェーズ毎に計測する。
+// hrtime()の壁時計計測はI/O待ち(quota非課金)と実CPU消費を区別できないため、
+// どのフェーズが本当にAPP_CPU quotaを消費しているかをgetrusage()差分で直接特定する。
+function diag_cpu_now() {
+    $r = getrusage();
+    return ($r['ru_utime.tv_sec'] * 1000000 + $r['ru_utime.tv_usec'])
+         + ($r['ru_stime.tv_sec'] * 1000000 + $r['ru_stime.tv_usec']);
+}
+
 $app->get('/', function (Request $request, Response $response) {
+    $t0 = diag_cpu_now();
     $me = $this->get('helper')->get_session_user();
+    $t1 = diag_cpu_now();
 
     // トップページの最新20件はuser全体に対するグローバルな1本のcache-aside(idx:latest)。
     // 新規投稿(POST /)とban(POST /admin/banned)の両方でinvalidateし、
@@ -527,13 +539,19 @@ $app->get('/', function (Request $request, Response $response) {
         $results = $ps->fetchAll(PDO::FETCH_ASSOC);
         $idx_mc->set('idx:latest', $results, 3600);
     }
+    $t2 = diag_cpu_now();
     $posts = $this->get('helper')->make_posts($results);
+    $t3 = diag_cpu_now();
 
-    return $this->get('view')->render($response, 'index.php', [
+    $resp = $this->get('view')->render($response, 'index.php', [
         'posts' => $posts,
         'me' => $me,
         'flash' => $this->get('flash')->getFirstMessage('notice'),
     ]);
+    $t4 = diag_cpu_now();
+    error_log(sprintf('DIAG_CPU session=%d query=%d make_posts=%d render=%d total=%d',
+        $t1 - $t0, $t2 - $t1, $t3 - $t2, $t4 - $t3, $t4 - $t0));
+    return $resp;
 });
 
 $app->get('/posts', function (Request $request, Response $response) {
