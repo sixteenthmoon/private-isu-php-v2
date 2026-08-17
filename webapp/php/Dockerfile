@@ -29,7 +29,7 @@ RUN { echo 'session.save_handler=files'; echo 'session.save_path=/dev/shm/php-se
 # app is capped at one CPU; keep I/O overlap while reducing excess runnable workers.
 # nginxとunix socketで通信し、docker bridge経由のTCP接続overheadを避ける（mysql/memcachedと同型）。
 # socketはnginx(別container、別uid)からも接続するためmode 0666で権限問題を回避する。
-RUN { echo '[www]'; echo 'pm = static'; echo 'pm.max_children=2'; echo 'listen = /var/run/php-fpm/php-fpm.sock'; echo 'listen.mode = 0666'; } > /usr/local/etc/php-fpm.d/zz-isucon-www.conf
+RUN { echo '[www]'; echo 'pm = static'; echo 'pm.max_children=3'; echo 'listen = /var/run/php-fpm/php-fpm.sock'; echo 'listen.mode = 0666'; } > /usr/local/etc/php-fpm.d/zz-isucon-www.conf
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
