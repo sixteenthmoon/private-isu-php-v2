@@ -203,7 +203,9 @@ $container->set('helper', function ($c) {
         // ため含めない。旧shape(idのみ)のセッションが残っている場合のみ、
         // フォールバックとしてu:{id}を引いて自己修復する。
         public function get_session_user() {
+            error_log('DIAG_GSU raw_session=' . json_encode($_SESSION ?? 'UNSET'));
             if (!isset($_SESSION['user'], $_SESSION['user']['id'])) {
+                error_log('DIAG_GSU early null return');
                 return null;
             }
             if (isset($_SESSION['user']['account_name'], $_SESSION['user']['authority'])) {
