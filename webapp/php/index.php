@@ -236,8 +236,9 @@ $container->set('helper', function ($c) {
         }
 
         public function make_posts(array $results, $options = []) {
-            $options += ['all_comments' => false];
+            $options += ['all_comments' => false, 'prefetched_comments' => null];
             $all_comments = $options['all_comments'];
+            $prefetched_comments = $options['prefetched_comments'];
 
             if (empty($results)) {
                 return [];
@@ -255,16 +256,29 @@ $container->set('helper', function ($c) {
                 // 新規commentはPOST /commentで該当post_idのキーをdeleteし整合を保つ
                 // (c3:と同じ方針。del_flgはtemplateで未使用のためbanとのstale干渉なし)。
                 $mc = $this->mc();
-                $cache_keys = array_map(fn($id) => 'ac:' . $id, $post_ids);
-                $cached = $mc->getMulti($cache_keys) ?: [];
+                if ($prefetched_comments !== null) {
+                    // GET /posts/{id}は呼び出し元でpd:{id}と同一のgetMulti round-tripに
+                    // ac:{id}を含めて既に取得済み(getrusage実測でmemcached呼び出し1回あたり
+                    // 実CPU56-136us相当のオーバーヘッドがあり、round-trip数削減がAPP_CPUに
+                    // 直接効くcpu-time-phase-diagnostic-01の知見を踏まえる)。
+                    // all_comments=trueの呼び出し元はGET /posts/{id}のみ(post_idは常に1件)
+                    // のため、ここでの追加memcached round-tripを丸ごと省略できる。
+                    $missing_ids = $prefetched_comments === false ? $post_ids : [];
+                    if ($prefetched_comments !== false) {
+                        $comments_by_post[$post_ids[0]] = $prefetched_comments;
+                    }
+                } else {
+                    $cache_keys = array_map(fn($id) => 'ac:' . $id, $post_ids);
+                    $cached = $mc->getMulti($cache_keys) ?: [];
 
-                $missing_ids = [];
-                foreach ($post_ids as $post_id) {
-                    $key = 'ac:' . $post_id;
-                    if (array_key_exists($key, $cached)) {
-                        $comments_by_post[$post_id] = $cached[$key];
-                    } else {
-                        $missing_ids[] = $post_id;
+                    $missing_ids = [];
+                    foreach ($post_ids as $post_id) {
+                        $key = 'ac:' . $post_id;
+                        if (array_key_exists($key, $cached)) {
+                            $comments_by_post[$post_id] = $cached[$key];
+                        } else {
+                            $missing_ids[] = $post_id;
+                        }
                     }
                 }
 
@@ -578,9 +592,16 @@ $app->get('/posts/{id}', function (Request $request, Response $response, $args) 
     // postの不変フィールド(id/user_id/body/mime/created_at/account_name)のみpd:へcache-aside。
     // del_flgは可変なのでcacheに含めず、既にban時にinvalidation済みのu:{owner_id}から取る
     // (pl:incidentの教訓: 新たなinvalidation経路を増やさず既存の正しい経路へ委譲する)。
+    // pd:とac:(全comment一覧、make_posts側)はどちらもpost_idのみから求まりお互いに
+    // 依存しないため、getMulti1回に束ねてmemcached round-trip数を2→1へ減らす
+    // (getrusage実測でmemcached呼び出し1回あたり実CPU56-136us相当のオーバーヘッドが
+    // あるとcpu-time-phase-diagnostic-01で確認済み)。
     $pd_key = 'pd:' . $post_id;
+    $ac_key = 'ac:' . $post_id;
     $mc = $helper->mc();
-    $post_row = $mc->get($pd_key);
+    $prefetched = $mc->getMulti([$pd_key, $ac_key]) ?: [];
+    $post_row = array_key_exists($pd_key, $prefetched) ? $prefetched[$pd_key] : false;
+    $prefetched_comments = array_key_exists($ac_key, $prefetched) ? $prefetched[$ac_key] : false;
     if ($post_row === false) {
         $db = $this->get('db');
         $ps = $db->prepare('SELECT `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`mime`, `p`.`created_at`,
@@ -599,7 +620,7 @@ $app->get('/posts/{id}', function (Request $request, Response $response, $args) 
         $post_row['post_user_del_flg'] = $owner ? $owner['del_flg'] : 1;
         $results = [$post_row];
     }
-    $posts = $helper->make_posts($results, ['all_comments' => true]);
+    $posts = $helper->make_posts($results, ['all_comments' => true, 'prefetched_comments' => $prefetched_comments]);
 
     if (count($posts) == 0) {
         $response->getBody()->write('404');
