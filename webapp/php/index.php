@@ -835,9 +835,15 @@ $app->get('/@{account_name}', function (Request $request, Response $response, $a
     // post一覧キャッシュへ到達する経路自体が無い(上流のanx:キャッシュがban時に
     // 能動的invalidationされ、そこで404になるため)ので、pl:{user_id}は新規投稿時の
     // invalidationのみで安全にcache-asideできる。
+    // pl:とuc:はどちらもuser_idのみから決定的に求まり互いに独立なため、
+    // post-detail-batched-memcached-lookup-01と同じ方針で1回のgetMultiに束ねる。
+    $mc = $this->get('helper')->mc();
     $pl_key = 'pl:' . $user['id'];
-    $pl_mc = $this->get('helper')->mc();
-    $results = $pl_mc->get($pl_key);
+    $uc_key = 'uc:' . $user['id'];
+    $prefetched = $mc->getMulti([$pl_key, $uc_key]) ?: [];
+    $results = array_key_exists($pl_key, $prefetched) ? $prefetched[$pl_key] : false;
+    $counts = array_key_exists($uc_key, $prefetched) ? $prefetched[$uc_key] : false;
+
     if ($results === false) {
         $ps = $db->prepare('SELECT `p`.`id`, `p`.`user_id`, `p`.`body`, `p`.`created_at`, `p`.`mime`,
                                    `u`.`account_name` AS `post_user_account_name`, `u`.`del_flg` AS `post_user_del_flg`
@@ -845,15 +851,12 @@ $app->get('/@{account_name}', function (Request $request, Response $response, $a
                             WHERE `p`.`user_id` = ? ORDER BY `p`.`created_at` DESC LIMIT ' . POSTS_PER_PAGE);
         $ps->execute([$user['id']]);
         $results = $ps->fetchAll(PDO::FETCH_ASSOC);
-        $pl_mc->set($pl_key, $results, 3600);
+        $mc->set($pl_key, $results, 3600);
     }
     $posts = $this->get('helper')->make_posts($results);
 
     // 投稿数/comment数/被comment数はuser_id単位でmemcachedへcache-aside。
     // 該当userの新規投稿・新規comment・自分の投稿への被commentの3経路でdelete-on-write。
-    $mc = $this->get('helper')->mc();
-    $counts_key = 'uc:' . $user['id'];
-    $counts = $mc->get($counts_key);
     if ($counts === false) {
         $counts = $this->get('helper')->fetch_first(
             'SELECT (SELECT COUNT(*) FROM `comments` WHERE `user_id` = ?) AS `comment_count`,
@@ -861,7 +864,7 @@ $app->get('/@{account_name}', function (Request $request, Response $response, $a
                     (SELECT COUNT(*) FROM `comments` `c` JOIN `posts` `p` ON `p`.`id` = `c`.`post_id` WHERE `p`.`user_id` = ?) AS `commented_count`',
             $user['id'], $user['id'], $user['id']
         );
-        $mc->set($counts_key, $counts, 3600);
+        $mc->set($uc_key, $counts, 3600);
     }
     $comment_count = $counts['comment_count'];
     $post_count = $counts['post_count'];
