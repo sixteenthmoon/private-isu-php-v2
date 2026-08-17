@@ -540,18 +540,8 @@ $app->get('/logout', function (Request $request, Response $response) {
     return redirect($response, '/', 302);
 });
 
-// diag: cpu-time-phase-diagnostic-02 (temporary, will revert). cpu-time-phase-diagnostic-01
-// (session-embed/batched-lookup導入前)以来のセッション累積変更後の再計測。
-function diag_cpu_now2() {
-    $r = getrusage();
-    return ($r['ru_utime.tv_sec'] * 1000000 + $r['ru_utime.tv_usec'])
-         + ($r['ru_stime.tv_sec'] * 1000000 + $r['ru_stime.tv_usec']);
-}
-
 $app->get('/', function (Request $request, Response $response) {
-    $t0 = diag_cpu_now2();
     $me = $this->get('helper')->get_session_user();
-    $t1 = diag_cpu_now2();
 
     // トップページの最新20件はuser全体に対するグローバルな1本のcache-aside(idx:latest)。
     // 新規投稿(POST /)とban(POST /admin/banned)の両方でinvalidateし、
@@ -570,19 +560,13 @@ $app->get('/', function (Request $request, Response $response) {
         $results = $ps->fetchAll(PDO::FETCH_ASSOC);
         $idx_mc->set('idx:latest', $results, 3600);
     }
-    $t2 = diag_cpu_now2();
     $posts = $this->get('helper')->make_posts($results);
-    $t3 = diag_cpu_now2();
 
-    $resp = $this->get('view')->render($response, 'index.php', [
+    return $this->get('view')->render($response, 'index.php', [
         'posts' => $posts,
         'me' => $me,
         'flash' => $this->get('flash')->getFirstMessage('notice'),
     ]);
-    $t4 = diag_cpu_now2();
-    error_log(sprintf('DIAG_CPU2 session=%d query=%d make_posts=%d render=%d total=%d',
-        $t1 - $t0, $t2 - $t1, $t3 - $t2, $t4 - $t3, $t4 - $t0));
-    return $resp;
 });
 
 $app->get('/posts', function (Request $request, Response $response) {
