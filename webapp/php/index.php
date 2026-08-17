@@ -172,7 +172,7 @@ $container->set('helper', function ($c) {
             $mc = $this->mc();
             $user = $mc->get($key);
             if ($user === false) {
-                $user = $this->fetch_first('SELECT `id`, `account_name`, `passhash` FROM users WHERE account_name = ? AND del_flg = 0', $account_name);
+                $user = $this->fetch_first('SELECT `id`, `account_name`, `passhash`, `authority` FROM users WHERE account_name = ? AND del_flg = 0', $account_name);
                 if ($user) {
                     $mc->set($key, $user, 3600);
                 }
@@ -196,9 +196,22 @@ $container->set('helper', function ($c) {
             return $owner_id;
         }
 
+        // account_name/authorityは登録後不変(admin昇格経路が存在しない)なため、
+        // ログイン/登録確立時に$_SESSIONへ埋め込み、通常はmemcached round-tripなしで
+        // 返す。del_flgはget_session_user()のどの呼び出し元でも使われていない
+        // (grep済み、banされたユーザ自身のsessionは引き続き閲覧できる現行仕様と整合)
+        // ため含めない。旧shape(idのみ)のセッションが残っている場合のみ、
+        // フォールバックとしてu:{id}を引いて自己修復する。
         public function get_session_user() {
             if (!isset($_SESSION['user'], $_SESSION['user']['id'])) {
                 return null;
+            }
+            if (isset($_SESSION['user']['account_name'], $_SESSION['user']['authority'])) {
+                return [
+                    'id' => $_SESSION['user']['id'],
+                    'account_name' => $_SESSION['user']['account_name'],
+                    'authority' => $_SESSION['user']['authority'],
+                ];
             }
             return $this->fetch_user_by_id($_SESSION['user']['id']);
         }
@@ -443,6 +456,8 @@ $app->post('/login', function (Request $request, Response $response) {
     if ($user) {
         $_SESSION['user'] = [
             'id' => $user['id'],
+            'account_name' => $user['account_name'],
+            'authority' => $user['authority'],
         ];
         $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
         return redirect($response, '/', 302);
@@ -494,8 +509,12 @@ $app->post('/register', function (Request $request, Response $response) {
         }
         throw $e;
     }
+    // authorityはusers.authorityのDEFAULT '0'と一致(新規登録は常にnon-admin、
+    // 昇格経路も存在しない)ため、クエリせず直接埋め込む。
     $_SESSION['user'] = [
         'id' => $db->lastInsertId(),
+        'account_name' => $account_name,
+        'authority' => 0,
     ];
     $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
     return redirect($response, '/', 302);
