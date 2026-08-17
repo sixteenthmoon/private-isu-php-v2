@@ -48,6 +48,13 @@ services:
       - memcached-run:/var/run/memcached
       - php-fpm-run:/var/run/php-fpm
     init: true
+    # session.save_path=/dev/shm/php-sessionsはtmpfsだが、Dockerのデフォルト/dev/shm
+    # サイズは64MBしかない。高スループット下でsession fileが蓄積し64MBを使い切ると、
+    # 以降のsession書き込みが容量不足で失敗し中身が空のsession fileが生成される
+    # (get_session_user()が直前にログイン成功したセッションをnullとして扱う原因、
+    # nginx-posts-pagination系incident参照)。session file自体は小さい(~150-300 byte)ため、
+    # 現実的などんな負荷でも枯渇しない程度に余裕を持たせる。
+    shm_size: "256m"
     deploy:
       resources:
         limits:
