@@ -678,10 +678,9 @@ $app->post('/', function (Request $request, Response $response) {
           $params['body'],
         ]);
         $pid = $db->lastInsertId();
+        // 3キーとも互いに依存しないためdeleteMultiで1回に束ねる(POST /commentと同じ方針)。
         $upload_mc = $this->get('helper')->mc();
-        $upload_mc->delete('uc:' . $me['id']);
-        $upload_mc->delete('pl:' . $me['id']);
-        $upload_mc->delete('idx:latest');
+        $upload_mc->deleteMulti(['uc:' . $me['id'], 'pl:' . $me['id'], 'idx:latest']);
         return redirect($response, "/posts/{$pid}", 302);
     } else {
         $this->get('flash')->addMessage('notice', '画像が必須です');
@@ -747,14 +746,17 @@ $app->post('/comment', function (Request $request, Response $response) {
         $me['id'],
         $params['comment']
     ]);
+    // c3:/ac:/uc:(commenter)/uc:(owner)はどれも他の結果に依存せず独立に決まる
+    // (owner_idはpo:からの取得のみが必要)ため、po:取得後にdeleteMultiで1回に束ね、
+    // 5回の個別memcached呼び出しを2回(po:のget + deleteMulti)へ削減する
+    // (cpu-time-phase-diagnostic-01の知見: 呼び出し1回あたり実CPU56-136us相当)。
     $mc = $this->get('helper')->mc();
-    $mc->delete('c3:' . $post_id);
-    $mc->delete('ac:' . $post_id);
-    $mc->delete('uc:' . $me['id']);
     $owner_id = $this->get('helper')->fetch_post_owner_id($post_id);
-    if ($owner_id !== null) {
-        $mc->delete('uc:' . $owner_id);
+    $delete_keys = ['c3:' . $post_id, 'ac:' . $post_id, 'uc:' . $me['id']];
+    if ($owner_id !== null && $owner_id != $me['id']) {
+        $delete_keys[] = 'uc:' . $owner_id;
     }
+    $mc->deleteMulti($delete_keys);
 
     return redirect($response, "/posts/{$post_id}", 302);
 });
@@ -801,15 +803,18 @@ $app->post('/admin/banned', function (Request $request, Response $response) {
     $mc = $this->get('helper')->mc();
     $query = 'UPDATE `users` SET `del_flg` = ? WHERE `id` = ?';
     $ps = $db->prepare($query);
+    // u:/anx:を対象user分すべて集めてからdeleteMultiで1回に束ねる
+    // (POST /comment・POST /と同じ方針、複数user一括banでも呼び出し回数を一定に保つ)。
+    $delete_keys = ['idx:latest'];
     foreach ($params['uid'] as $id) {
         $account_name = $this->get('helper')->fetch_first('SELECT `account_name` FROM `users` WHERE `id` = ?', $id)['account_name'] ?? null;
         $ps->execute([1, $id]);
-        $mc->delete('u:' . $id);
+        $delete_keys[] = 'u:' . $id;
         if ($account_name !== null) {
-            $mc->delete('anx:' . $account_name);
+            $delete_keys[] = 'anx:' . $account_name;
         }
     }
-    $mc->delete('idx:latest');
+    $mc->deleteMulti($delete_keys);
 
     return redirect($response, '/admin/banned', 302);
 });
