@@ -238,19 +238,45 @@ $container->set('helper', function ($c) {
             $comments_by_post = [];
 
             if ($all_comments) {
-                $ps = $db->prepare("SELECT `c`.`id`, `c`.`post_id`, `c`.`user_id`, `c`.`comment`, `c`.`created_at`,
-                                           `cu`.`account_name` AS `comment_user_account_name`, `cu`.`del_flg` AS `comment_user_del_flg`
-                                    FROM `comments` `c` JOIN `users` `cu` ON `cu`.`id` = `c`.`user_id`
-                                    WHERE `c`.`post_id` IN ($in) ORDER BY `c`.`post_id`, `c`.`created_at` DESC");
-                $ps->execute($post_ids);
-                while ($comment = $ps->fetch(PDO::FETCH_ASSOC)) {
-                    $comment['user'] = [
-                        'id' => $comment['user_id'],
-                        'account_name' => $comment['comment_user_account_name'],
-                        'del_flg' => $comment['comment_user_del_flg'],
-                    ];
-                    unset($comment['comment_user_account_name'], $comment['comment_user_del_flg']);
-                    $comments_by_post[$comment['post_id']][] = $comment;
+                // 投稿詳細の全comment一覧はpost_id単位でmemcachedへcache-aside(ac:)。
+                // 新規commentはPOST /commentで該当post_idのキーをdeleteし整合を保つ
+                // (c3:と同じ方針。del_flgはtemplateで未使用のためbanとのstale干渉なし)。
+                $mc = $this->mc();
+                $cache_keys = array_map(fn($id) => 'ac:' . $id, $post_ids);
+                $cached = $mc->getMulti($cache_keys) ?: [];
+
+                $missing_ids = [];
+                foreach ($post_ids as $post_id) {
+                    $key = 'ac:' . $post_id;
+                    if (array_key_exists($key, $cached)) {
+                        $comments_by_post[$post_id] = $cached[$key];
+                    } else {
+                        $missing_ids[] = $post_id;
+                    }
+                }
+
+                if ($missing_ids) {
+                    $in_missing = implode(',', array_fill(0, count($missing_ids), '?'));
+                    $ps = $db->prepare("SELECT `c`.`id`, `c`.`post_id`, `c`.`user_id`, `c`.`comment`, `c`.`created_at`,
+                                               `cu`.`account_name` AS `comment_user_account_name`, `cu`.`del_flg` AS `comment_user_del_flg`
+                                        FROM `comments` `c` JOIN `users` `cu` ON `cu`.`id` = `c`.`user_id`
+                                        WHERE `c`.`post_id` IN ($in_missing) ORDER BY `c`.`post_id`, `c`.`created_at` DESC");
+                    $ps->execute($missing_ids);
+                    $fetched_by_post = [];
+                    while ($comment = $ps->fetch(PDO::FETCH_ASSOC)) {
+                        $comment['user'] = [
+                            'id' => $comment['user_id'],
+                            'account_name' => $comment['comment_user_account_name'],
+                            'del_flg' => $comment['comment_user_del_flg'],
+                        ];
+                        unset($comment['comment_user_account_name'], $comment['comment_user_del_flg']);
+                        $fetched_by_post[$comment['post_id']][] = $comment;
+                    }
+                    foreach ($missing_ids as $post_id) {
+                        $comments = $fetched_by_post[$post_id] ?? [];
+                        $comments_by_post[$post_id] = $comments;
+                        $mc->set('ac:' . $post_id, $comments, 3600);
+                    }
                 }
                 foreach ($post_ids as $post_id) {
                     $comment_counts[$post_id] = count($comments_by_post[$post_id] ?? []);
@@ -683,6 +709,7 @@ $app->post('/comment', function (Request $request, Response $response) {
     ]);
     $mc = $this->get('helper')->mc();
     $mc->delete('c3:' . $post_id);
+    $mc->delete('ac:' . $post_id);
     $mc->delete('uc:' . $me['id']);
     $owner_id = $this->get('helper')->fetch_post_owner_id($post_id);
     if ($owner_id !== null) {
