@@ -40,7 +40,12 @@ COPY ./composer.json /var/www/html
 COPY ./composer.lock /var/www/html
 WORKDIR /var/www/html
 
-RUN composer install --no-dev --optimize-autoloader
+# composerのdownload cacheをbuild cache mountで永続化する。GitHubのcodeload(匿名ダウンロード)は
+# レート制限があり、Dockerfile冒頭の変更でbuild cacheが無効化される度に全パッケージを再取得すると
+# 429を頻発する。cache mountで既取得分を再利用し、実際にネットワーク越しに取りに行くのは
+# 新規/変更分だけにする。
+RUN --mount=type=cache,target=/root/.composer/cache,sharing=locked \
+    composer install --no-dev --optimize-autoloader
 
 COPY . /var/www/html
 
