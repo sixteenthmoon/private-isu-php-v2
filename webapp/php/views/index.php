@@ -1,3 +1,4 @@
+<?php $csrf_token_escaped = escape_html($_SESSION['csrf_token'] ?? ''); ?>
 <div class="isu-submit">
   <form method="post" action="/" enctype="multipart/form-data">
     <div class="isu-form">
@@ -7,7 +8,7 @@
       <textarea name="body"></textarea>
     </div>
     <div class="form-submit">
-      <input type="hidden" name="csrf_token" value="<?= escape_html($_SESSION['csrf_token'] ?? '') ?>">
+      <input type="hidden" name="csrf_token" value="<?= $csrf_token_escaped ?>">
       <input type="submit" name="submit" value="submit">
     </div>
     <?php if ($flash): ?>
@@ -50,7 +51,7 @@
           <form method="post" action="/comment">
             <input type="text" name="comment">
             <input type="hidden" name="post_id" value="<?= $post['id'] ?>">
-            <input type="hidden" name="csrf_token" value="<?= escape_html($_SESSION['csrf_token'] ?? '') ?>">
+            <input type="hidden" name="csrf_token" value="<?= $csrf_token_escaped ?>">
             <input type="submit" name="submit" value="submit">
           </form>
         </div>

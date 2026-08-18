@@ -1,3 +1,4 @@
+<?php $csrf_token_escaped = escape_html($_SESSION['csrf_token'] ?? ''); ?>
 <div class="isu-posts">
   <?php foreach ($posts as $post): ?>
     <?php $post_user_name = escape_html($post['user']['account_name']); $post_user_url = escape_html(rawurlencode($post['user']['account_name'])); ?>
@@ -30,7 +31,7 @@
           <form method="post" action="/comment">
             <input type="text" name="comment">
             <input type="hidden" name="post_id" value="<?= $post['id'] ?>">
-            <input type="hidden" name="csrf_token" value="<?= escape_html($_SESSION['csrf_token'] ?? '') ?>">
+            <input type="hidden" name="csrf_token" value="<?= $csrf_token_escaped ?>">
             <input type="submit" name="submit" value="submit">
           </form>
         </div>
