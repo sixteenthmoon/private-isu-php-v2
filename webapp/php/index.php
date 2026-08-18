@@ -536,6 +536,14 @@ $app->post('/register', function (Request $request, Response $response) {
 $app->get('/logout', function (Request $request, Response $response) {
     unset($_SESSION['user']);
     unset($_SESSION['csrf_token']);
+    // GET /のnginx session-keyed cache(fastcgi_cache_key = $request_uri.$cookie_PHPSESSID)は
+    // 同一cookie値の間は最大1s古い応答を返しうる。logoutが同じPHPSESSIDのまま
+    // $_SESSIONだけを空にすると、直後のGET /(redirect先)がlogin中にcacheされた
+    // 古い応答(ユーザー名表示あり)をそのまま返してしまう。session_regenerate_id(true)で
+    // PHPSESSID自体を切り替え、新しいcookie値=新しいcache keyにすることで、
+    // 直後のGET /が必ずcache miss経由でphp-fpmへ到達し正しく未ログイン状態を返すようにする
+    // (副次的にsession fixation対策にもなる)。
+    session_regenerate_id(true);
     return redirect($response, '/', 302);
 });
 
