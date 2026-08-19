@@ -190,9 +190,11 @@ docker build -t private-isu-benchmarker .
 docker run --network host -i private-isu-benchmarker /bin/benchmarker -t http://host.docker.internal -u /opt/userdata
 # Linuxの場合
 docker run --network host --add-host host.docker.internal:host-gateway -i private-isu-benchmarker /bin/benchmarker -t http://host.docker.internal -u /opt/userdata
+# Linuxで名前解決を介さずホストへ接続する場合
+docker run --rm --network host -i private-isu-benchmarker /bin/benchmarker -t http://127.0.0.1 -u /opt/userdata
 ```
 
-`host.docker.internal`で動作しない場合は、`ip a`コマンドなどで`docker0`インタフェースに割り当てられたホスト側のIPアドレスを確認し、`host.docker.internal`の代わりにそのIPアドレスを指定してください。例えば、以下の出力の場合は`172.17.0.1`を指定します。
+Linuxで`--network host`を使用する場合、コンテナの`127.0.0.1`はホストを指すため、`host.docker.internal`の名前解決が遅い、または失敗する環境では上記のIP指定を使用できます。host networkを使用しない場合は、`ip a`コマンドなどで`docker0`インタフェースに割り当てられたホスト側のIPアドレスを確認し、`host.docker.internal`の代わりにそのIPアドレスを指定してください。例えば、以下の出力の場合は`172.17.0.1`を指定します。
 
 ```
 3: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default
